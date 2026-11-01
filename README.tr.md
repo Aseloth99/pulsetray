@@ -8,7 +8,7 @@
   <img alt="Lisans: MIT" src="https://img.shields.io/badge/lisans-MIT-blue">
   <img alt="Platform: Windows 10 ve 11" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4">
   <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB">
-  <img alt="Rust, 2024 sürümü" src="https://img.shields.io/badge/Rust-2024%20s%C3%BCr%C3%BCm%C3%BC-DEA584">
+  <img alt="Arka uç: Rust" src="https://img.shields.io/badge/arka%20u%C3%A7-Rust-DEA584">
   <img alt="Svelte 5" src="https://img.shields.io/badge/Svelte-5-FF3E00">
 </p>
 
