@@ -1,0 +1,86 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PulseTray",
+  "version": "1.0.0",
+  "identifier": "com.pulsetray.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "create": false,
+        "title": "PulseTray",
+        "width": 564,
+        "height": 744,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "focus": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,StorageServiceOutOfProcess --in-process-gpu --enable-features=NetworkServiceInProcess2 --disable-breakpad"
+      },
+      {
+        "label": "traymenu",
+        "create": false,
+        "title": "PulseTray menu",
+        "url": "menu",
+        "width": 196,
+        "height": 153,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "focus": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,StorageServiceOutOfProcess --in-process-gpu --enable-features=NetworkServiceInProcess2 --disable-breakpad"
+      },
+      {
+        "label": "hud",
+        "create": false,
+        "title": "PulseTray mini gauge",
+        "url": "hud",
+        "width": 190,
+        "height": 120,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "focus": false,
+        "focusable": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,StorageServiceOutOfProcess --in-process-gpu --enable-features=NetworkServiceInProcess2 --disable-breakpad"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "PulseTray",
+    "copyright": "© 2026 PulseTray",
+    "shortDescription": "Lightweight system monitor for the Windows tray",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": { "installMode": "currentUser", "languages": ["English", "Turkish"] }
+    }
+  }
+}

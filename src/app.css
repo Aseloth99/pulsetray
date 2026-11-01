@@ -1,0 +1,224 @@
+:root {
+  /* Neutral grey (the family's light theme: MediaCompressor's LIGHT base / lo / text; muted a touch darker, #595959 instead of #616161: it sits on the wells'
+     shadow edges too and has to stay above 4.5:1 there); the old cool blue-grey is gone. */
+  --bg: #e0e0e0;
+  --hi: #ffffff;
+  --lo: #bdbdbd;
+  --text: #1a1a1a;
+  --muted: #595959;
+  --cpu: #4f86f7;
+  --mem: #9a63f0;
+  --net: #1fb89a;
+  --disk: #f2994a;
+  --bat: #3cc06a;
+  --gpu: #e5578a;
+  --danger: #e5534b;
+  /* Colours for TEXT. The plain accents above are meant for graphics; as text they were only 1.8 to 3:1 on the light theme. */
+  --ok-text: #136430;
+  --net-text: #0b6552;
+  --warn-text: #8a4509;
+  --bad-text: #a8271f;
+
+  --raised: 6px 6px 14px var(--lo), -6px -6px 14px var(--hi);
+  --raised-sm: 3px 3px 7px var(--lo), -3px -3px 7px var(--hi);
+  --inset: inset 4px 4px 8px var(--lo), inset -4px -4px 8px var(--hi);
+  --inset-sm: inset 2px 2px 4px var(--lo), inset -2px -2px 4px var(--hi);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  /* Nötr gri (eski lacivert ton kaldırıldı; diğer uygulamalarla aynı aile). */
+  --bg: #2a2a2a;
+  --hi: #363636;
+  --lo: #1b1b1b;
+  --text: #e8e8e8;
+  --muted: #9b9b9b;
+  --cpu: #6c9bff;
+  --mem: #b48bff;
+  --net: #3ad6b6;
+  --disk: #ffb066;
+  --bat: #57d885;
+  --gpu: #ff7aa8;
+  --ok-text: var(--bat);
+  --net-text: var(--net);
+  --warn-text: var(--disk);
+  --bad-text: #ff7b72;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html,
+body {
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  font-size: 13px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+}
+
+/* ---- shared tile layout helpers ---- */
+.center {
+  display: grid;
+  place-items: center;
+  padding: 2px 0;
+}
+.sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.vis {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.split {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 14px;
+  align-items: center;
+}
+.split.wide-vis {
+  grid-template-columns: 150px 1fr;
+  align-items: start;
+}
+.kv {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.model {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.rate {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
+}
+.rate b {
+  font-size: 13px;
+  font-weight: 650;
+}
+.lab {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  width: 100%;
+}
+.divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--lo) 55%, transparent);
+}
+
+/* ---- shared controls (used by the page and by tiles) ---- */
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  box-shadow: var(--raised-sm);
+  color: var(--muted);
+  transition:
+    box-shadow 0.15s,
+    color 0.15s;
+}
+.icon-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+.icon-btn:active:not(:disabled) {
+  box-shadow: var(--inset-sm);
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.icon-btn.pinned {
+  color: var(--net);
+  box-shadow: var(--inset-sm);
+}
+.icon-btn.sm {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+}
+.switch {
+  width: 42px;
+  height: 24px;
+  border-radius: 12px;
+  box-shadow: var(--inset-sm);
+  padding: 3px;
+  flex: none;
+  display: block;
+}
+.switch i {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: var(--raised-sm);
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease;
+}
+.switch.on i {
+  transform: translateX(18px);
+  background: var(--net);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--net) 60%, transparent);
+}
+.switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* the graphs' names are coloured inline with the series colour: a little darker on the light theme (glass.css has its own rule) */
+:root:not([data-theme="dark"]) .scale .name {
+  filter: brightness(0.85);
+}
+.small-btn.wide {
+  align-self: flex-start;
+}
+.small-btn {
+  padding: 6px 12px;
+  border-radius: 10px;
+  box-shadow: var(--raised-sm);
+  font-size: 12px;
+}
+.small-btn:active:not(:disabled) {
+  box-shadow: var(--inset-sm);
+}
+.small-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

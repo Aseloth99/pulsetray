@@ -1,0 +1,264 @@
+/*
+ * Glassmorphic style (Settings > Appearance > Style). Everything here is behind :root[data-style="glass"], which the
+ * pages set from settings.style (see applyStyle in settings.svelte.ts); the default Neumorphic look is app.css alone and
+ * does not read a single rule of this file.
+ *
+ * How it works
+ *  - The Neumorphic shadows are tokens (--raised, --raised-sm, --inset, --inset-sm). Here they are redefined as glass:
+ *    a hairline edge + a top light line + a soft drop shadow for "raised", a darker see-through well for "inset". The
+ *    small controls fill themselves with a huge inset spread (it paints above the background, below the content and
+ *    follows the border radius), so the existing components need no change; --bg is transparent for the same reason.
+ *  - The window is transparent and backdrop-filter only sees what the PAGE paints, never the desktop. So the popup card
+ *    (.shell) paints its own static scene (soft blobs, no animation) and the panels above it are frosted: a translucent
+ *    fill + blur + saturate + edge. Nested panels (tooltip, menus) are the only other blurred things.
+ *  - The mini gauge and the tray menu live in transparent windows with nothing behind them to blur: they get an
+ *    opaque-like gradient (at least 85 %) with the same edge and top light, and no backdrop-filter.
+ */
+
+/* ------------------------------------------------------------------ light */
+:root[data-style="glass"]:not([data-theme="dark"]) {
+  color-scheme: light;
+  --text: #1a1a1a;
+  --muted: #4a4a4a;
+  --cpu: #3a71ec;
+  --mem: #8a52e4;
+  --net: #12a387;
+  --disk: #ea8526;
+  --bat: #2bb258;
+  --gpu: #de4a7e;
+  --danger: #dc4a42;
+  --ok-text: #11613a;
+  --net-text: #0a6350;
+  --warn-text: #864104;
+  --bad-text: #a5211c;
+
+  --bg: transparent;
+  --hi: rgba(255, 255, 255, 0.9);
+  --lo: rgba(40, 40, 40, 0.34);
+
+  /* the scene behind the glass: pastel sky / lavender / mint / a touch of peach on a pale NEUTRAL grey base */
+  --g-scene:
+    radial-gradient(540px 400px at 0% 0%, rgba(120, 168, 255, 0.62), transparent 72%),
+    radial-gradient(460px 360px at 100% 4%, rgba(190, 154, 255, 0.5), transparent 72%),
+    radial-gradient(440px 340px at 100% 100%, rgba(108, 222, 190, 0.5), transparent 72%),
+    radial-gradient(400px 320px at 0% 100%, rgba(255, 192, 156, 0.4), transparent 72%),
+    radial-gradient(320px 260px at 52% 44%, rgba(150, 196, 255, 0.3), transparent 72%),
+    linear-gradient(165deg, #f1f1f1 0%, #e4e4e4 100%);
+  --g-card: linear-gradient(150deg, rgba(255, 255, 255, 0.64) 0%, rgba(255, 255, 255, 0.36) 100%);
+  --g-pop: linear-gradient(150deg, rgba(255, 255, 255, 0.92) 0%, rgba(247, 247, 247, 0.86) 100%);
+  --g-menu: linear-gradient(160deg, #fafafa 0%, #ececec 100%);
+  --g-blur: blur(18px) saturate(1.6);
+  --g-solid: #ffffff;
+  --g-seg-on: rgba(255, 255, 255, 0.92);
+
+  --g-edge:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.98),
+    0 0 0 1px rgba(60, 60, 60, 0.1);
+  --g-drop: 0 12px 28px -10px rgba(30, 30, 30, 0.28), 0 2px 6px rgba(30, 30, 30, 0.08);
+  --raised: var(--g-edge), var(--g-drop);
+  --raised-sm:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.8),
+    inset 0 1px 0 #fff,
+    inset 0 0 0 999px rgba(255, 255, 255, 0.52),
+    0 0 0 1px rgba(60, 60, 60, 0.09),
+    0 2px 6px rgba(30, 30, 30, 0.12);
+  --raised-sm-hover:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.9),
+    inset 0 1px 0 #fff,
+    inset 0 0 0 999px rgba(255, 255, 255, 0.78),
+    0 0 0 1px rgba(60, 60, 60, 0.12),
+    0 3px 9px rgba(30, 30, 30, 0.16);
+  --inset:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+    inset 0 2px 6px rgba(30, 30, 30, 0.2),
+    inset 0 0 0 999px rgba(60, 60, 60, 0.07);
+  --inset-sm:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+    inset 0 1px 3px rgba(30, 30, 30, 0.18),
+    inset 0 0 0 999px rgba(60, 60, 60, 0.075);
+
+  --g-shell-edge:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.6),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(60, 60, 60, 0.22),
+    0 10px 30px rgba(20, 20, 20, 0.3);
+}
+
+/* ------------------------------------------------------------------ dark (neutral grey, only faint colour in the glows) */
+:root[data-style="glass"][data-theme="dark"] {
+  color-scheme: dark;
+  --text: #ececec;
+  --muted: #c2c2c2;
+  --cpu: #7aa5ff;
+  --mem: #bd96ff;
+  --net: #3fdcbb;
+  --disk: #ffb46c;
+  --bat: #5edc8a;
+  --gpu: #ff83ae;
+  --danger: #ff6b62;
+  --ok-text: var(--bat);
+  --net-text: var(--net);
+  --warn-text: var(--disk);
+  --bad-text: #ff8078;
+
+  --bg: transparent;
+  --hi: rgba(255, 255, 255, 0.14);
+  --lo: rgba(255, 255, 255, 0.28);
+
+  --g-scene:
+    radial-gradient(520px 380px at 0% 0%, rgba(108, 150, 255, 0.15), transparent 72%),
+    radial-gradient(440px 340px at 100% 4%, rgba(178, 136, 255, 0.12), transparent 72%),
+    radial-gradient(420px 320px at 100% 100%, rgba(58, 214, 182, 0.11), transparent 72%),
+    radial-gradient(380px 300px at 0% 100%, rgba(255, 122, 168, 0.08), transparent 72%),
+    radial-gradient(300px 240px at 52% 44%, rgba(255, 255, 255, 0.05), transparent 72%),
+    linear-gradient(165deg, #262626 0%, #1b1b1b 100%);
+  --g-card: linear-gradient(150deg, rgba(255, 255, 255, 0.115) 0%, rgba(255, 255, 255, 0.05) 100%);
+  --g-pop: linear-gradient(150deg, rgba(58, 58, 58, 0.94) 0%, rgba(40, 40, 40, 0.92) 100%);
+  --g-menu: linear-gradient(160deg, #343434 0%, #232323 100%);
+  --g-blur: blur(20px) saturate(1.5);
+  --g-solid: #d9d9d9;
+  --g-seg-on: rgba(255, 255, 255, 0.17);
+
+  --g-edge:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.11),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.2),
+    0 0 0 1px rgba(0, 0, 0, 0.45);
+  --g-drop: 0 12px 28px -8px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --raised: var(--g-edge), var(--g-drop);
+  --raised-sm:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 0 0 999px rgba(255, 255, 255, 0.075),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  --raised-sm-hover:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 999px rgba(255, 255, 255, 0.14),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 3px 9px rgba(0, 0, 0, 0.4);
+  --inset:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 2px 7px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 999px rgba(0, 0, 0, 0.24);
+  --inset-sm:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 3px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 999px rgba(0, 0, 0, 0.22);
+
+  --g-shell-edge:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.17),
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* ------------------------------------------------------------------ popup: the scene and the frosted panels */
+:root[data-style="glass"] .shell:not([role="menu"]) {
+  background: var(--g-scene);
+  box-shadow: var(--g-shell-edge);
+}
+/* the tiles (Tile.svelte's <section>) and the cards of Settings / Battery history / Update */
+:root[data-style="glass"] [data-tile] > section,
+:root[data-style="glass"] .shell .card {
+  background: var(--g-card);
+  -webkit-backdrop-filter: var(--g-blur);
+  backdrop-filter: var(--g-blur);
+}
+
+/* ------------------------------------------------------------------ controls */
+:root[data-style="glass"] :is(.icon-btn, .small-btn, .btn, .upd-open, .quit):hover:not(:disabled):not(:active) {
+  box-shadow: var(--raised-sm-hover);
+}
+:root[data-style="glass"] .chip:not(.on):not(.off):hover {
+  box-shadow: var(--raised-sm-hover);
+}
+/* selected = tinted with the accent instead of "pressed in" */
+:root[data-style="glass"] :is(.chip.on, .icon-btn.pinned) {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--net) 55%, transparent),
+    inset 0 0 0 999px color-mix(in srgb, var(--net) 17%, transparent);
+}
+:root[data-style="glass"] .seg button.on {
+  background: var(--g-seg-on);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 4px rgba(0, 0, 0, 0.2);
+}
+:root[data-style="glass"]:not([data-theme="dark"]) .seg button.on {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.95),
+    0 0 0 1px rgba(60, 60, 60, 0.1),
+    0 2px 6px rgba(30, 30, 30, 0.16);
+}
+/* the toggle: a glass pill with a pearl thumb; on = the accent */
+:root[data-style="glass"] .switch i {
+  background: var(--g-solid);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+:root[data-style="glass"] .switch.on {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--net) 60%, transparent),
+    inset 0 0 0 999px color-mix(in srgb, var(--net) 28%, transparent);
+}
+:root[data-style="glass"] .switch.on i {
+  background: var(--g-solid);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.35),
+    0 0 8px color-mix(in srgb, var(--net) 50%, transparent);
+}
+
+/* ------------------------------------------------------------------ small details */
+/* the graph names (Spark.svelte) are coloured inline with the series colour; on the pale light glass the pink one was 3.6:1, so they are
+   darkened a little (the lines and values keep the pure accents) */
+:root[data-style="glass"]:not([data-theme="dark"]) .scale .name {
+  filter: brightness(0.82);
+}
+:root[data-style="glass"] .donut .track {
+  stroke: color-mix(in srgb, var(--text) 9%, transparent);
+}
+:root[data-style="glass"] .plot .dot {
+  background: var(--g-solid);
+}
+:root[data-style="glass"] .plot .dot.peak {
+  background: currentColor;
+}
+
+/* ------------------------------------------------------------------ floating panels (blur whatever is behind them) */
+:root[data-style="glass"] .tip,
+:root[data-style="glass"] .ctx,
+:root[data-style="glass"] .acts .menu {
+  background: var(--g-pop);
+  -webkit-backdrop-filter: var(--g-blur);
+  backdrop-filter: var(--g-blur);
+  box-shadow: var(--g-edge), 0 14px 30px -8px rgba(0, 0, 0, 0.35);
+}
+
+/* ------------------------------------------------------------------ tray menu: its own window, nothing behind it to blur */
+:root[data-style="glass"] .shell[role="menu"] {
+  background: var(--g-menu);
+  box-shadow: var(--g-shell-edge);
+}
+:root[data-style="glass"] .shell[role="menu"] .check {
+  color: var(--net-text);
+}
+:root[data-style="glass"] .shell[role="menu"] .item.strong {
+  background: color-mix(in srgb, var(--net) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--net) 38%, transparent);
+}
+:root[data-style="glass"] .shell[role="menu"] .item:hover,
+:root[data-style="glass"] .shell[role="menu"] .item:focus-visible {
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent);
+}
+:root[data-style="glass"] .shell[role="menu"] .item.danger:hover,
+:root[data-style="glass"] .shell[role="menu"] .item.danger:focus-visible {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+/* ------------------------------------------------------------------ mini gauge
+ * Styled in routes/hud/+page.svelte (its own scoped block): the card's opacity (--alpha, never below 85 %) is a number
+ * set on that card, so the gradient has to be written where --alpha is visible. No backdrop-filter there either. */
