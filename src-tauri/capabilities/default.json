@@ -4,8 +4,6 @@
   "description": "Capability for the popup window, the right-click menu window and the desktop mini gauge",
   "windows": ["main", "traymenu", "hud"],
   "permissions": [
-    "core:default",
-    "core:window:allow-start-dragging",
-    "core:window:allow-start-resize-dragging"
+    "core:default"
   ]
 }

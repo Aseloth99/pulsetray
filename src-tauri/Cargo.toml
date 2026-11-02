@@ -33,6 +33,8 @@ zip = { version = "9.0.2", default-features = false, features = ["deflate"] }
 tauri-plugin-global-shortcut = "2"
 # Same version tauri's wry uses; only to name the WebView2 interface that trims memory while the popup is hidden.
 webview2-com = "0.39"
+# Already part of tauri; only to name `ResizeDirection` for starting an edge drag (see `start_resize` in lib.rs).
+tauri-runtime = "2"
 # App icons in the "Top apps" list (both already come with tauri).
 png = "0.17"
 # Battery history: reads Windows' own battery report (powercfg /batteryreport /xml).

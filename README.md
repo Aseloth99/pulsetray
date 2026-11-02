@@ -66,7 +66,7 @@ PulseTray sits in the tray and costs next to nothing until you open it. A click 
 
 ### Mini Gauge and FPS
 
-A small card that stays on top of the desktop. Drag it anywhere (the position is remembered); it does not take focus and does not show in Alt+Tab; it can let clicks through (Settings > Mini Gauge > Click-Through) and hides while a full-screen game or video is in front (switchable). Opacity runs from 85 to 100 %: with less, content moving behind the card (chat, video) shone through and looked like flicker. FPS is shown large on top: 60 and above green, 30-59 orange, below 30 red. Theme and language follow the panel at once. Switch it on in Settings > Mini Gauge or from the tray menu.
+A small card that stays on top of the desktop. Drag it anywhere (the position is remembered); it does not take focus and does not show in Alt+Tab; it can let clicks through (Settings > Mini Gauge > Click-Through) and hides while a full-screen game or video is in front (switchable). Opacity runs from 50 to 100 % in steps of 10 (90 % by default): at the low end, content moving behind the card (chat, video) shows through, which can look like flicker, and the labels get harder to read. FPS is shown large on top: 60 and above green, 30-59 orange, below 30 red. Theme and language follow the panel at once. Switch it on in Settings > Mini Gauge or from the tray menu.
 
 **FPS** (selected in the gauge settings) counts the frames of the app in front. Nothing is injected into the game: PulseTray listens to the ETW events Windows writes for every presented frame (the same events PresentMon and the Xbox Game Bar use), DXGI for DirectX 10/11/12 and D3D9 for DirectX 9. For Vulkan and OpenGL the graphics kernel's present history is listened to only for a few seconds when the app in front does not use DirectX, because that source produces tens of thousands of events per second while a game runs. Measuring runs only while FPS is selected in the gauge. It needs an administrator or an account in the "Performance Log Users" group. Browsers do not show up, because they draw frames in a separate process.
 
@@ -123,7 +123,7 @@ npm run tauri dev
 | Right-click the tray icon | the tray menu |
 | **Esc** | go back from Settings / battery history / the update screen, then close the panel (unless pinned) |
 | Header: **Advanced** switch | Classic or Advanced view |
-| Header: fit icon | resize the panel to what its tiles need (appears when the panel is not that size) |
+| Header: fit icon, or a double click on an edge | resize the panel to what its tiles need (the icon appears when the panel is not that size) |
 | Header: pin icon | keep the panel open; drag and resize it |
 | Header: sun / moon icon | quick light / dark switch (the "System" choice stays in Settings) |
 | Header: gear icon | Settings |

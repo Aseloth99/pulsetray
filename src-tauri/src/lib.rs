@@ -458,7 +458,8 @@ fn spawn_ping_thread(app: AppHandle, state: Arc<AppState>) {
 /// Pinned popups are resized by the user; this restores a remembered size (clamped to the screen).
 #[tauri::command]
 fn resize_popup(window: WebviewWindow, state: AppStateRef<'_>, width: f64, height: f64) {
-    if !size_is_fixed(&state) {
+    // Not while the user drags an edge: a size set by the page now would fight the drag.
+    if !size_is_fixed(&state) || is_resizing(&state) {
         return;
     }
     let (mut w, mut h) = (width.max(240.0), height.max(320.0));
@@ -475,19 +476,118 @@ fn size_is_fixed(state: &AppState) -> bool {
     state.pinned.load(Ordering::Relaxed) || state.custom_size.load(Ordering::Relaxed)
 }
 
-/// The UI says an edge drag starts (`on`) or has ended. A drag that never reports its end expires after a minute.
-#[tauri::command]
-fn set_resizing(window: WebviewWindow, state: AppStateRef<'_>, on: bool) {
-    state.resizing_since.store(if on { now_ms().max(1) } else { 0 }, Ordering::Relaxed);
-    if !on && window.is_visible().unwrap_or(false) {
-        // Take focus back so that a later click elsewhere still closes the popup.
-        let _ = window.set_focus();
-    }
-}
-
+/// While an edge drag runs (`start_resize`) the popup must not close when the focus moves. A drag whose end is never
+/// seen expires after a minute.
 fn is_resizing(state: &AppState) -> bool {
     let since = state.resizing_since.load(Ordering::Relaxed);
     since != 0 && now_ms().saturating_sub(since) < 60_000
+}
+
+/// Is the primary mouse button held down right now (whatever window the pointer is over)?
+#[cfg(windows)]
+fn primary_button_down() -> bool {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetAsyncKeyState(vkey: i32) -> i16;
+        fn GetSystemMetrics(index: i32) -> i32;
+    }
+    const VK_LBUTTON: i32 = 0x01;
+    const VK_RBUTTON: i32 = 0x02;
+    const SM_SWAPBUTTON: i32 = 23;
+    // GetAsyncKeyState reads the physical buttons: with swapped buttons the primary one is the right one.
+    unsafe {
+        let key = if GetSystemMetrics(SM_SWAPBUTTON) != 0 { VK_RBUTTON } else { VK_LBUTTON };
+        GetAsyncKeyState(key) < 0
+    }
+}
+
+#[cfg(not(windows))]
+fn primary_button_down() -> bool {
+    false
+}
+
+/// A press on the header of a pinned popup: move the window with the system's own move loop. This is what
+/// `data-tauri-drag-region` asks tao for as well, but tao hands the cursor position to WM_NCLBUTTONDOWN as a pointer
+/// instead of packed coordinates, and here the window then did not move at all (the same message posted by hand with
+/// packed coordinates moves it).
+#[tauri::command]
+fn start_move(window: WebviewWindow) {
+    #[cfg(windows)]
+    {
+        #[repr(C)]
+        struct Point {
+            x: i32,
+            y: i32,
+        }
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn GetCursorPos(p: *mut Point) -> i32;
+            fn ReleaseCapture() -> i32;
+            fn PostMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> i32;
+        }
+        const WM_NCLBUTTONDOWN: u32 = 0x00A1;
+        const HTCAPTION: usize = 2;
+        let Ok(hwnd) = window.hwnd() else { return };
+        let mut p = Point { x: 0, y: 0 };
+        unsafe {
+            if GetCursorPos(&mut p) == 0 {
+                return;
+            }
+            // lParam of a non-client mouse message: x in the low word, y in the high word (16-bit, signed).
+            let packed = (((p.y as i16) as u16 as isize) << 16) | ((p.x as i16) as u16 as isize);
+            ReleaseCapture();
+            PostMessageW(hwnd.0 as isize, WM_NCLBUTTONDOWN, HTCAPTION, packed);
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = window.start_dragging();
+}
+
+/// An edge grip was pressed: start the resize here, in one step. The page used to send two calls (a "resizing" flag and
+/// the drag itself); Windows shuffles the focus as the size loop starts, that often won the race, and the popup closed
+/// (as "clicked elsewhere") instead of resizing. The flag now goes up first and stays up until the mouse button is
+/// released; then the focus comes back and the page is told (`resize-ended`).
+#[tauri::command]
+fn start_resize(app: AppHandle, window: WebviewWindow, state: AppStateRef<'_>, dir: String) {
+    use tauri_runtime::ResizeDirection as D;
+    let direction = match dir.as_str() {
+        "North" => D::North,
+        "South" => D::South,
+        "East" => D::East,
+        "West" => D::West,
+        "NorthEast" => D::NorthEast,
+        "NorthWest" => D::NorthWest,
+        "SouthEast" => D::SouthEast,
+        "SouthWest" => D::SouthWest,
+        _ => return,
+    };
+    let token = now_ms().max(1);
+    state.resizing_since.store(token, Ordering::Relaxed);
+    let as_webview: &tauri::Webview = window.as_ref();
+    if as_webview.window().start_resize_dragging(direction).is_err() {
+        state.resizing_since.store(0, Ordering::Relaxed);
+        return;
+    }
+    let st = app.state::<Arc<AppState>>().inner().clone();
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(120) {
+            std::thread::sleep(Duration::from_millis(40));
+            if st.resizing_since.load(Ordering::Relaxed) != token {
+                return; // another resize took over
+            }
+            if !primary_button_down() {
+                break;
+            }
+        }
+        if st.resizing_since.compare_exchange(token, 0, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            let _ = app.emit("resize-ended", ());
+            if window.is_visible().unwrap_or(false) {
+                // Take focus back so that a later click elsewhere still closes the popup.
+                let _ = window.set_focus();
+            }
+        }
+    });
 }
 
 /// Tells Rust whether the user has a remembered size for the current mode (see `size_is_fixed`).
@@ -504,6 +604,12 @@ fn set_popup_height(window: WebviewWindow, state: AppStateRef<'_>, height: u32) 
     let height = height.clamp(240, 1400);
     let unchanged = state.popup_height.swap(height, Ordering::Relaxed) == height;
     if size_is_fixed(&state) || !window.is_visible().unwrap_or(false) {
+        return;
+    }
+    if is_resizing(&state) {
+        // The user is dragging an edge: a refit now would fight the drag. If the drag ends without a size of the
+        // user's own (a plain click on a grip), the next measurement fits the content again.
+        state.refit_height.store(true, Ordering::Relaxed);
         return;
     }
     if unchanged && !state.refit_height.swap(false, Ordering::Relaxed) {
@@ -524,7 +630,7 @@ fn set_popup_width(window: WebviewWindow, state: AppStateRef<'_>, width: u32) {
         return;
     }
     // A popup sized by the user keeps its width; the default only matters again when that size is reset.
-    if size_is_fixed(&state) {
+    if size_is_fixed(&state) || is_resizing(&state) {
         return;
     }
     // Copy the value out: holding the lock across window calls could deadlock against the main thread.
@@ -1457,7 +1563,8 @@ pub fn run() {
             set_popup_height,
             popup_settled,
             set_custom_size,
-            set_resizing,
+            start_resize,
+            start_move,
             set_features,
             set_ping_targets,
             ping_start,

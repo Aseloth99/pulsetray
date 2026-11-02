@@ -40,8 +40,8 @@
   });
 
   /**
-   * The card is at least 85 % solid (see hud.rs MIN_OPACITY): more see-through, moving content behind it flickered
-   * through, and a light card over a dark game turned mid grey. The light theme's labels use deeper shades.
+   * The card is at least 50 % solid (see hud.rs MIN_OPACITY). At the low end moving content behind it shows through,
+   * and a light card over a dark game turns mid grey; the light theme's labels use deeper shades for that.
    */
   const alpha = $derived(Math.min(1, Math.max(HUD_MIN_OPACITY, cfg.opacity)));
 
@@ -209,7 +209,8 @@
     box-sizing: border-box;
   }
   /* label colours: the plain accents are for graphics; as text on the light card they were 1.8 to 3:1. The card is the (neutral grey)
-     page colour over whatever is behind it, in the worst case 85 % of it over black: these stay above 4.5:1 there. */
+     page colour over whatever is behind it; over black these stay above 4.5:1 down to about 85 % opacity, below that how
+     readable the labels are depends on what is behind the card (that is what the opacity choice trades away). */
   .card {
     --k-fps: #105230;
     --k-fps-mid: #7a3706;
@@ -231,7 +232,7 @@
     --k-disk: var(--disk);
   }
   /*
-   * Glassmorphic style (see glass.css): an opaque-like gradient, never below the card's own opacity (--alpha, 85 % and
+   * Glass style (see glass.css): an opaque-like gradient, never below the card's own opacity (--alpha, 50 % and
    * up), with a faint colour glow in two corners, a rim and a light line on top. No backdrop-filter on purpose: this
    * window is transparent, so there is nothing behind it to blur, and the gauge is always on screen (CPU cost).
    */

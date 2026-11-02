@@ -2869,6 +2869,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-single-instance",
+ "tauri-runtime",
  "ureq",
  "url",
  "webview2-com",

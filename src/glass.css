@@ -12,7 +12,7 @@
  *    (.shell) paints its own static scene (soft blobs, no animation) and the panels above it are frosted: a translucent
  *    fill + blur + saturate + edge. Nested panels (tooltip, menus) are the only other blurred things.
  *  - The mini gauge and the tray menu live in transparent windows with nothing behind them to blur: they get an
- *    opaque-like gradient (at least 85 %) with the same edge and top light, and no backdrop-filter.
+ *    opaque-like gradient (the gauge: its own opacity, 50 % and up) with the same edge and top light, and no backdrop-filter.
  */
 
 /* ------------------------------------------------------------------ light */
@@ -260,5 +260,5 @@
 }
 
 /* ------------------------------------------------------------------ mini gauge
- * Styled in routes/hud/+page.svelte (its own scoped block): the card's opacity (--alpha, never below 85 %) is a number
+ * Styled in routes/hud/+page.svelte (its own scoped block): the card's opacity (--alpha, never below 50 %) is a number
  * set on that card, so the gradient has to be written where --alpha is visible. No backdrop-filter there either. */

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub const LABEL: &str = "hud";
-pub const MIN_OPACITY: f32 = 0.85;
+pub const MIN_OPACITY: f32 = 0.5;
 pub const ITEMS: [&str; 6] = ["fps", "cpu", "ram", "gpu", "net", "disk"];
 const FILE: &str = "hud.json";
 /// How much of the gauge must still be on a monitor for a saved position to be reused (px).
@@ -20,8 +20,8 @@ const MIN_VISIBLE: i32 = 40;
 pub struct HudConfig {
     pub on: bool,
     pub items: Vec<String>,
-    /// Card opacity, 0.85 ... 1. More see-through than that, whatever moved behind the card (a chat scrolling,
-    /// a video) showed through and made it look as if it flickered and changed colour.
+    /// Card opacity in steps of 0.1, 0.5 ... 1 (Settings offers 50 ... 100 %). At the low end whatever moves behind
+    /// the card (a chat scrolling, a video) shows through, so it can look as if the gauge flickers.
     pub opacity: f32,
     /// Clicks pass through (the gauge can't be dragged while locked).
     pub locked: bool,
@@ -44,7 +44,9 @@ impl HudConfig {
     /// Known items only, each once, in the canonical order; opacity in range.
     pub fn sanitized(mut self) -> Self {
         self.items = ITEMS.iter().filter(|k| self.items.iter().any(|i| i == *k)).map(|k| k.to_string()).collect();
-        self.opacity = if self.opacity.is_finite() { self.opacity.clamp(MIN_OPACITY, 1.0) } else { 0.9 };
+        // Snapped to the steps Settings offers, so an older value (0.85, 0.95) still lights one of the buttons.
+        self.opacity =
+            if self.opacity.is_finite() { ((self.opacity * 10.0).round() / 10.0).clamp(MIN_OPACITY, 1.0) } else { 0.9 };
         self
     }
 
@@ -110,8 +112,14 @@ mod tests {
         assert!(c.shows("cpu") && !c.shows("gpu"));
         assert_eq!(HudConfig { opacity: f32::NAN, ..Default::default() }.sanitized().opacity, 0.9);
         assert_eq!(HudConfig { opacity: 0.0, ..Default::default() }.sanitized().opacity, MIN_OPACITY);
-        // a 60 % card from an older version becomes the least see-through choice left
-        assert_eq!(HudConfig { opacity: 0.6, ..Default::default() }.sanitized().opacity, MIN_OPACITY);
+        // every choice Settings offers (50 ... 100 %) is kept as it is
+        for step in [0.5f32, 0.6, 0.7, 0.8, 0.9, 1.0] {
+            assert_eq!(HudConfig { opacity: step, ..Default::default() }.sanitized().opacity, step);
+        }
+        // values stored by an older version (85 / 95 %) snap to the nearest step; the old range's floor stays valid
+        assert_eq!(HudConfig { opacity: 0.95, ..Default::default() }.sanitized().opacity, 1.0);
+        assert_eq!(HudConfig { opacity: 0.62, ..Default::default() }.sanitized().opacity, 0.6);
+        assert_eq!(HudConfig { opacity: 0.3, ..Default::default() }.sanitized().opacity, MIN_OPACITY);
     }
 
     #[test]

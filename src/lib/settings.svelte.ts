@@ -64,15 +64,15 @@ export type HudItem = (typeof HUD_ITEMS)[number];
 export interface HudSettings {
   on: boolean;
   items: HudItem[];
-  /** Card opacity, 0.85 ... 1 (more see-through, whatever moved behind it showed through and looked like flicker). */
+  /** Card opacity in steps of 0.1, 0.5 ... 1 (at the low end whatever moves behind the card shows through). */
   opacity: number;
   /** Clicks pass through to what is under the gauge (it can't be dragged then). */
   locked: boolean;
   hideFullscreen: boolean;
 }
 
-/** See hud.rs MIN_OPACITY: a 60 % card from an older version opens at 85 %. */
-export const HUD_MIN_OPACITY = 0.85;
+/** See hud.rs MIN_OPACITY. Settings offers 50 ... 100 % in steps of 10; an older stored value snaps to the nearest step. */
+export const HUD_MIN_OPACITY = 0.5;
 
 const defaultHud = (): HudSettings => ({
   on: false,
@@ -91,7 +91,7 @@ function cleanHud(raw: unknown): HudSettings {
   return {
     on: r.on === true,
     items,
-    opacity: Number.isFinite(op) ? Math.min(1, Math.max(HUD_MIN_OPACITY, op)) : base.opacity,
+    opacity: Number.isFinite(op) ? Math.min(1, Math.max(HUD_MIN_OPACITY, Math.round(op * 10) / 10)) : base.opacity,
     locked: r.locked === true,
     hideFullscreen: r.hideFullscreen !== false,
   };

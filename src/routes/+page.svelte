@@ -3,7 +3,6 @@
   import { invoke } from "@tauri-apps/api/core";
   import { emitTo, listen } from "@tauri-apps/api/event";
   import { getVersion } from "@tauri-apps/api/app";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
   import "../app.css";
   import "../glass.css";
   import Icon from "$lib/Icon.svelte";
@@ -257,20 +256,52 @@
     { dir: "SouthEast", cls: "se" },
     { dir: "SouthWest", cls: "sw" },
   ];
-  /** True from the moment a grip is pressed until the mouse is next seen over the page (the drag has ended). */
+  /** True from the moment a grip is pressed until Rust says the drag has ended (`resize-ended`, mouse button released). */
   let userResizing = false;
+  /** The window actually changed size while the grip was held (a plain click on a grip leaves no remembered size). */
+  let resizedByUser = false;
+  /** When a grip was last pressed: the system's resize loop swallows the release, so no `dblclick` ever arrives. */
+  let lastGripPress = 0;
+  /** The previous press on a grip moved the window (so the next press is another drag, not a double click). */
+  let lastGripMoved = false;
   const startResize = (dir: Edge) => (e: MouseEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    // The second press of a double click on an edge: fit the popup to its content again.
+    const now = performance.now();
+    if (now - lastGripPress < 450 && !lastGripMoved) {
+      lastGripPress = 0;
+      // a moment later: Rust is still ending the first press's resize flag, and while it is up it ignores size requests
+      setTimeout(fitContent, 150);
+      return;
+    }
+    lastGripPress = now;
     userResizing = true;
-    // The drag briefly takes focus from the popup; tell Rust so it doesn't hide it as "clicked elsewhere".
-    invoke("set_resizing", { on: true }).catch(() => {});
-    getCurrentWindow().startResizeDragging(dir);
+    resizedByUser = false;
+    // Rust raises its "resizing" flag and starts the drag in one step: the drag shuffles the focus, and with two separate
+    // calls the popup was hidden as "clicked elsewhere" before the flag was up (it closed instead of resizing).
+    invoke("start_resize", { dir }).catch(() => {
+      userResizing = false;
+    });
   };
+  /** A press on the header (not on one of its buttons) moves a pinned popup; Rust runs the system's move loop. */
+  function startMove(e: MouseEvent) {
+    if (e.button !== 0 || !settings.pinned) return;
+    if ((e.target as HTMLElement).closest("button, [role=switch], a, input, select")) return;
+    e.preventDefault();
+    invoke("start_move").catch(() => {});
+  }
   function endResize() {
-    if (!userResizing) return;
     userResizing = false;
-    invoke("set_resizing", { on: false }).catch(() => {});
+    lastGripMoved = resizedByUser;
+    if (!resizedByUser) {
+      fit(); // a click on a grip that moved nothing: whatever refit was held back during the press happens now
+      return;
+    }
+    resizedByUser = false;
+    // The last size events can arrive after this one: remember the size the window has a moment from now.
+    clearTimeout(sizeTimer);
+    sizeTimer = setTimeout(saveUserSize, 150);
   }
   /** A pinned popup has no remembered size of its own; this says whether it currently hugs its content. */
   let pinnedFitted = $state(false);
@@ -476,7 +507,7 @@
   // The same short names the gauge shows (the long tile names didn't fit the narrow popup).
   const hudLabel = (id: HudItem): string =>
     id === "net" ? tr("hudNet") : id === "disk" ? tr("disk") : id.toUpperCase();
-  const HUD_OPACITY = [0.85, 0.9, 0.95, 1];
+  const HUD_OPACITY = [0.5, 0.6, 0.7, 0.8, 0.9, 1];
   function setHud(change: Partial<typeof settings.hud>) {
     settings.hud = { ...settings.hud, ...change };
     settings.save();
@@ -540,15 +571,17 @@
 
   // A size the user dragged to is remembered, separately for classic and advanced (pinned or not).
   let sizeTimer: ReturnType<typeof setTimeout> | undefined;
+  function saveUserSize() {
+    settings.sizes[adv ? "advanced" : "classic"] = { w: window.innerWidth, h: window.innerHeight };
+    pinnedFitted = false;
+    settings.save();
+  }
   function onResize() {
     refreshSizes();
     if (!userResizing) return;
+    resizedByUser = true;
     clearTimeout(sizeTimer);
-    sizeTimer = setTimeout(() => {
-      settings.sizes[adv ? "advanced" : "classic"] = { w: window.innerWidth, h: window.innerHeight };
-      pinnedFitted = false;
-      settings.save();
-    }, 400);
+    sizeTimer = setTimeout(saveUserSize, 400);
   }
 
   // The backend gets both boxes: the daily background check only runs with "Check for Updates Automatically" on, and the
@@ -686,6 +719,7 @@
       if (settings.hud.on !== e.payload) setHud({ on: e.payload });
     });
     // Every visit starts on the main view (not wherever it was left) with a fresh layout measurement.
+    const unResizeEnd = listen("resize-ended", () => endResize());
     const unShown = listen("popup-shown", () => {
       view = "main";
       shownCount++;
@@ -702,6 +736,7 @@
       window.removeEventListener("focus", onShow);
       unlisten.then((f) => f());
       unShown.then((f) => f());
+      unResizeEnd.then((f) => f());
       unNotice.then((f) => f());
       stopUpdate();
       unOpenUpdate.then((f) => f());
@@ -749,7 +784,7 @@
   const historyKey: Record<number, Key> = { 180: "hist3m", 900: "hist15m", 3600: "hist1h" };
 </script>
 
-<svelte:window onkeydown={onKey} onresize={onResize} onmousemove={endResize} />
+<svelte:window onkeydown={onKey} onresize={onResize} />
 
 <!-- One tile, used by the main view and by the live preview in Settings > Modules > Customize. -->
 {#snippet tileOf(id: TileId, mm: NonNullable<typeof m>, advMode: boolean, extra: number, onHistory: () => void)}
@@ -778,7 +813,7 @@
 
 <!-- Generous grab zones: the visible card is inset from the window edge by a transparent margin. -->
 {#each edges as edge (edge.dir)}
-  <div class="grip {edge.cls}" role="presentation" onmousedown={startResize(edge.dir)} ondblclick={fitContent}></div>
+  <div class="grip {edge.cls}" role="presentation" onmousedown={startResize(edge.dir)}></div>
 {/each}
 
 <div class="shell" class:pinned={settings.pinned}>
@@ -792,8 +827,11 @@
     </svg>
   {/if}
   {#if view === "main"}
-    <header class="top" data-tauri-drag-region>
-      <div class="brand" data-tauri-drag-region>
+    <!-- Only a pinned popup can be moved (`startMove`): on an unpinned one a press on the title started a drag, the drag
+         shuffled the focus and the popup closed (as "clicked elsewhere"). -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <header class="top" onmousedown={startMove}>
+      <div class="brand">
         <span class="dot"></span>
         <h1>PulseTray</h1>
       </div>

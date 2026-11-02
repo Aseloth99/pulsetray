@@ -486,7 +486,7 @@ export const dict = {
     themeDark: "Koyu",
     style: "Tasarım",
     styleNeumorphic: "Neumorfik",
-    styleGlass: "Cam (Glassmorphic)",
+    styleGlass: "Cam",
     styleTip: "Yumuşak kabartmalı yüzeyler ya da hafif bir gradyan üstünde buzlu cam paneller. Her temayla çalışır",
     themeToLight: "Açık Temaya Geç",
     themeToDark: "Koyu Temaya Geç",
