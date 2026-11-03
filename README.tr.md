@@ -40,7 +40,7 @@ PulseTray tepside durur ve siz açana kadar neredeyse hiçbir şeye mal olmaz. S
 | Kutucuk | Klasik görünüm | Gelişmiş modda ek olarak |
 |---|---|---|
 | İşlemci | yük, hız | model, çekirdek ve iş parçacığı sayısı, taban hız, önbellek, sıcaklık, çekirdek başına çubuklar (üzerine gelince yük ve hız) |
-| Bellek | RAM ve sanal bellek (sayfa dosyası) halkaları | kullanılabilir, önbellek, ayrılan bellek (başlık rozeti), bellek türü, hızı, modülleri, üreticisi |
+| Bellek | RAM ve sanal bellek (sayfa dosyası) halkaları | kullanılabilir, önbellek, ayrılan bellek, bellek türü, hızı, modülleri, üreticisi |
 | Ekran kartı | yük, bellek | çekirdek ve bellek hızı, sıcaklık, fan, güç (NVIDIA), her ekran kartı için ayrı sekme |
 | Ağ | hız, bugünkü toplam | bağdaştırıcı, IP, bağlantı hızı, bugün / oturum / açılıştan beri tablosu |
 | Disk | doluluk (%90 üstü kırmızı), okuma ve yazma hızı | etkinlik süresi, tüm sürücüler, fiziksel disk modelleri, disk sağlığı |
@@ -79,8 +79,8 @@ Arka planda kendiliğinden ping atılmaz. Test yalnızca siz başlatınca (3 dak
 Hepsi yönetici hakkı olmadan, yalnızca Windows'un kendi sunduklarıyla çalışır; tek istisna FPS'tir (yukarıya bakın).
 
 - **CPU yükü:** Çekirdeklerin meşgul olduğu sürenin payı (toplam, çekirdek başına ve uygulamalar için aynı ölçü). Görev Yöneticisi bunu bir de anlık hız / taban hız oranıyla çarpar: turboda bazı çekirdekler boştayken bile %100 gösterebilir, PulseTray göstermez.
-- **CPU sıcaklığı:** En sıcak ACPI ısı bölgesi; çoğu makinede işlemcidir ama anakart belirler, yaklaşık değer sayın. AMD Ryzen masaüstlerinin çoğunda Windows bunu hiç vermez.
-- **CPU gücü:** Yalnızca Intel (Windows "Energy Meter"). AMD Ryzen'de watt yoktur; okumak için çekirdek sürücüsü gerekir, PulseTray bunu bilerek kurmaz.
+- **CPU sıcaklığı:** En sıcak ACPI ısı bölgesi; çoğu makinede işlemcidir ama anakart belirler, yaklaşık değer sayın. AMD Ryzen masaüstlerinin çoğunda Windows bunu hiç vermez. MSI Afterburner ya da HWiNFO çalışırken PulseTray gerçek çip sıcaklığını bu araçların yayımladığı paylaşımlı bellekten okur (PulseTray tarafında sürücü ve yönetici hakkı gerekmez; HWiNFO'da *Shared Memory Support* açılmalı), ipucu kaynağı yazar.
+- **CPU gücü:** Windows'un "Energy Meter"ından gelir, o da yalnızca Intel'de vardır. AMD Ryzen'de çekirdek sürücüsü olmadan watt yoktur, PulseTray bunu bilerek kurmaz; çalışan bir Afterburner ya da HWiNFO sıcaklıkla aynı yoldan watt'ı sağlar.
 - **GPU hızı ve sıcaklığı:** Windows'un performans arayüzünden (Görev Yöneticisi'ndeki gibi).
 - **GPU gücü ve fan:** Yalnızca NVIDIA. Uyuyan ekran kartı sırf okumak için uyandırılmaz.
 - **Uygulama başına ağ kullanımı** yönetici hakkı ister; bu yüzden Uygulamalar kutucuğunda yoktur.
@@ -197,6 +197,7 @@ pulsetray/
 | `metrics.rs` | örnekleyici: işlemci, bellek, diskler, ağ, pil, ekran kartı, Wi-Fi, işlemler tek bir `Metrics` görüntüsünde |
 | `pdh.rs`, `procs.rs` | performans sayaçları (ekran kartı, disk etkinliği) ve tek sistem çağrısıyla işlem başına işlemci, bellek, disk |
 | `gpusensors.rs`, `battery.rs`, `diskhealth.rs`, `wifi.rs` | ekran kartı hızları, sıcaklık, fan, güç; pil kapasitesi ve gücü; disk sağlığı; Wi-Fi |
+| `extsensors.rs` | çalışan MSI Afterburner / HWiNFO'dan (paylaşımlı bellekleri) işlemci sıcaklığı ve gücü |
 | `hardware.rs` | statik donanım bilgileri, ayrı bir iş parçacığında bir kez okunur |
 | `history.rs` | grafik geçmişi, Rust tarafında tutulur, panel kapalıyken de |
 | `ping.rs`, `pingstate.rs` | ICMP gecikme ölçümü ve test durum makinesi (saf mantık, birim testli) |

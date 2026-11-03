@@ -162,7 +162,7 @@ export interface Metrics {
   cpuFreqMhz: number;
   cpuTempC: number | null;
   cpuPowerW: number | null;
-  /** Where the value comes from: "acpi" / "meter" (Windows) or "" when there is none. */
+  /** Where the value comes from: "acpi" / "meter" (Windows), "afterburner" / "hwinfo" (a running monitoring tool) or "" when there is none. */
   cpuTempSrc?: string;
   cpuPowerSrc?: string;
   memTotal: number;
@@ -191,6 +191,8 @@ export interface Metrics {
   gpus: Gpu[];
   battery: Battery;
   wifi: Wifi | null;
+  /** Is there a Wi-Fi adapter at all; known even while the Wi-Fi tile is off (then `wifi` is not read). */
+  wifiPresent?: boolean;
   /** Frames per second of the app in front (fps.rs); only while the mini gauge shows FPS. */
   fps?: FpsReading | null;
   topCpu: Proc[];

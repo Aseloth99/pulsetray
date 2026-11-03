@@ -90,7 +90,7 @@
   $effect(() => {
     const cur = m;
     if (!cur || view !== "main") return;
-    const now = { battery: cur.battery.present, gpu: cur.gpus.length > 0, wifi: cur.wifi != null };
+    const now = { battery: cur.battery.present, gpu: cur.gpus.length > 0, wifi: cur.wifi != null || cur.wifiPresent === true };
     untrack(() => {
       for (const k of ["battery", "gpu", "wifi"] as const) {
         if (now[k]) {

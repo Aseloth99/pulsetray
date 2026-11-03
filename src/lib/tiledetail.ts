@@ -55,8 +55,8 @@ export const DETAIL: Record<string, DetailDef> = {
       ["maker", "maker"],
     ],
     badges: [
-      ["commit", "commit"],
       ["combined", "memCombined"],
+      ["commit", "commit"],
       ["ram", "ram"],
       ["swap", "swap"],
       ["none", "none"],

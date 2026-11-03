@@ -4,6 +4,7 @@ mod autostart;
 mod battery;
 mod batteryreport;
 mod diskhealth;
+mod extsensors;
 mod fps;
 mod fullscreen;
 mod gpusensors;

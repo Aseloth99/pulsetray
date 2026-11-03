@@ -40,7 +40,7 @@ PulseTray sits in the tray and costs next to nothing until you open it. A click 
 | Tile | Classic view | Advanced view adds |
 |---|---|---|
 | CPU | load, clock | model, cores and threads, base clock, cache, temperature, per-core bars (hover for load and clock) |
-| Memory | RAM and virtual memory (page file) rings | available, cached, committed memory (header badge), memory type, speed, modules, maker |
+| Memory | RAM and virtual memory (page file) rings | available, cached, committed memory, memory type, speed, modules, maker |
 | GPU | load, memory | core and memory clock, temperature, fan, power (NVIDIA), one tab per GPU |
 | Network | speed, today's total | adapter, IP address, link speed, today / session / since-boot table |
 | Disk | space used (red above 90 %), read and write speed | active time, all drives, physical disk models, drive health |
@@ -79,8 +79,8 @@ Nothing is pinged in the background. The test runs only when you start it (3 min
 All of it works without administrator rights and with what Windows itself provides, with one exception: FPS (see above).
 
 - **CPU load** is the share of time the cores were busy (total, per core and for apps, the same measure). Task Manager multiplies it by current-over-base clock, so in turbo it can show 100 % while some cores idle; PulseTray does not.
-- **CPU temperature** is the hottest ACPI thermal zone. On most machines that is the processor, but the motherboard decides, so treat it as approximate. On most AMD Ryzen desktops Windows exposes none at all.
-- **CPU power** exists only on Intel (Windows "Energy Meter"). On AMD Ryzen there are no watts: reading them needs a kernel driver, which PulseTray deliberately does not install.
+- **CPU temperature** is the hottest ACPI thermal zone. On most machines that is the processor, but the motherboard decides, so treat it as approximate. On most AMD Ryzen desktops Windows exposes none at all. While MSI Afterburner or HWiNFO is running, PulseTray reads the real die temperature from the shared memory those tools publish instead (no driver and no administrator rights on PulseTray's side; in HWiNFO switch on *Shared Memory Support*), and the tooltip names the source.
+- **CPU power** comes from Windows' "Energy Meter", which exists on Intel only. On AMD Ryzen there are no watts without a kernel driver, which PulseTray deliberately does not install; a running Afterburner or HWiNFO supplies them the same way as the temperature.
 - **GPU load and temperature** come from Windows' performance interface (like Task Manager).
 - **GPU power and fan** exist only on NVIDIA. A sleeping GPU is not woken up just to read it.
 - **Per-app network usage** needs administrator rights, so it is not in the Top Apps tile.
@@ -197,6 +197,7 @@ pulsetray/
 | `metrics.rs` | the sampler: CPU, memory, disks, network, battery, GPU, Wi-Fi, processes into one `Metrics` snapshot |
 | `pdh.rs`, `procs.rs` | performance counters (GPU, disk activity) and per-process CPU, memory, disk from one system call |
 | `gpusensors.rs`, `battery.rs`, `diskhealth.rs`, `wifi.rs` | GPU clocks, temperature, fan, power; battery capacity and power; drive health; Wi-Fi |
+| `extsensors.rs` | CPU temperature and power from a running MSI Afterburner / HWiNFO (their shared memory) |
 | `hardware.rs` | static hardware facts, read once on a separate thread |
 | `history.rs` | chart history kept on the Rust side, also while the panel is closed |
 | `ping.rs`, `pingstate.rs` | ICMP latency probes and the test state machine (pure logic, unit-tested) |

@@ -7,7 +7,7 @@ use crate::procs::ProcTable;
 use crate::usage::UsageStore;
 use crate::wifi::{self, WifiInfo};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use sysinfo::{
@@ -127,6 +127,8 @@ pub struct Metrics {
     pub gpus: Vec<GpuNow>,
     pub battery: Battery,
     pub wifi: Option<WifiInfo>,
+    /// Is there a Wi-Fi adapter at all? Known even while the Wi-Fi tile is off and `wifi` is not read.
+    pub wifi_present: bool,
     /// Frames per second of the app in front; only while the mini gauge shows FPS (see fps.rs).
     pub fps: Option<crate::fps::FpsReading>,
     pub top_cpu: Vec<ProcInfo>,
@@ -182,6 +184,8 @@ struct Cache {
     gpu_pids: HashMap<u32, f32>,
     battery_detail: Option<BatteryDetail>,
     wifi: Option<WifiInfo>,
+    wifi_present: bool,
+    wifi_probed: bool,
     perf: (u32, u32, u32, u64, u64, u64),
     top_cpu: Vec<ProcInfo>,
     top_mem: Vec<ProcInfo>,
@@ -209,6 +213,11 @@ pub struct Sampler {
     procs: ProcTable,
     /// Every NVIDIA adapter name DXGI reported (NVML devices are matched against it).
     nvidia_names: Vec<String>,
+    /// The adapter LUIDs the GPU counters listed on the previous read (see `gpu_list_stale`).
+    counter_luids: Option<HashSet<String>>,
+    /// Earliest moment the adapter list may be read again, and how long to wait after a read that changed nothing.
+    gpu_relist_at: Instant,
+    gpu_relist_wait: Duration,
     cpu_temp_filter: StaticSensor,
     tick: u64,
     cache: Cache,
@@ -251,6 +260,38 @@ impl StaticSensor {
     }
 }
 
+/// The adapter list (LUIDs) is read from DXGI once at start-up, but a card gets a new LUID when its driver is
+/// installed or reset while the PC runs, and adapters come and go (virtual displays, an eGPU). The counters
+/// then name LUIDs the list does not know, and the card reads 0 % / 0 B until the program is restarted.
+/// The list is stale when the counters' LUID set changed since the last read (`seen` = None on the first
+/// one) or when a listed card has no counters at all (`all_listed` = false).
+fn gpu_list_stale(seen: Option<&HashSet<String>>, now: &HashSet<String>, all_listed: bool) -> bool {
+    seen.is_some_and(|s| s != now) || !all_listed
+}
+
+/// Does every adapter of the list have counters (under its own LUID or an alias)?
+fn all_have_counters(gpus: &[GpuStatic], ids: &HashSet<String>) -> bool {
+    gpus.iter().all(|g| ids.contains(&g.luid) || g.alias_luids.iter().any(|a| ids.contains(a)))
+}
+
+fn nvidia_names_of(gpus: &[GpuStatic]) -> Vec<String> {
+    gpus.iter().filter(|g| g.name.to_lowercase().contains("nvidia")).map(|g| g.name.clone()).collect()
+}
+
+/// A re-read that finds the same list is repeated less and less often (an adapter that never gets counters
+/// must not keep a sleeping laptop dGPU busy); one that finds a new list is checked again after the minimum.
+const GPU_RELIST_MIN: Duration = Duration::from_secs(30);
+const GPU_RELIST_MAX: Duration = Duration::from_secs(600);
+
+/// Read the adapter list from DXGI again (see `gpu_list_stale`): the new list (None if it is the same, or empty
+/// because the driver is still coming up) and how long to wait before the next re-read.
+fn relist_gpus(current: &[GpuStatic], wait: Duration) -> (Option<Vec<GpuStatic>>, Duration) {
+    let fresh = hardware::dxgi_gpus();
+    let same = fresh.iter().map(|g| &g.luid).eq(current.iter().map(|g| &g.luid));
+    let wait = if same { (wait * 2).min(GPU_RELIST_MAX) } else { GPU_RELIST_MIN };
+    (if same || fresh.is_empty() { None } else { Some(fresh) }, wait)
+}
+
 /// Reading a GPU's sensors (NVML, D3DKMT) can wake a sleeping laptop dGPU and keep it awake, which costs
 /// battery. An adapter with no load and nothing allocated is idle, so leave it alone until it has work.
 fn worth_probing(usage: f32, dedicated_used: u64) -> bool {
@@ -277,11 +318,7 @@ impl Sampler {
                 .with_memory(MemoryRefreshKind::everything()),
         );
         let gpus = hardware::dxgi_gpus();
-        let nvidia_names = gpus
-            .iter()
-            .filter(|g| g.name.to_lowercase().contains("nvidia"))
-            .map(|g| g.name.clone())
-            .collect();
+        let nvidia_names = nvidia_names_of(&gpus);
         Self {
             sys,
             networks: Networks::new_with_refreshed_list(),
@@ -295,6 +332,9 @@ impl Sampler {
             last_disk: Instant::now(),
             procs: ProcTable::default(),
             nvidia_names,
+            counter_luids: None,
+            gpu_relist_at: Instant::now(),
+            gpu_relist_wait: GPU_RELIST_MIN,
             cpu_temp_filter: StaticSensor::new(),
             tick: 0,
             cache: Cache::default(),
@@ -405,6 +445,7 @@ impl Sampler {
             gpus: c.gpus.clone(),
             battery: read_battery(c.battery_detail.clone()),
             wifi: c.wifi.clone(),
+            wifi_present: c.wifi_present,
             fps: None, // filled in by the sampler loop when the gauge shows it
             top_cpu: c.top_cpu.clone(),
             top_mem: c.top_mem.clone(),
@@ -477,8 +518,17 @@ impl Sampler {
             Some(p) => (self.cpu_temp_filter.filter(p.cpu_temp_c()), p.cpu_power_w()),
             None => (None, None),
         };
-        (c.cpu_temp, c.cpu_temp_src) = (win_temp, if win_temp.is_some() { "acpi" } else { "" });
-        (c.cpu_power, c.cpu_power_src) = (win_power, if win_power.is_some() { "meter" } else { "" });
+        // A running Afterburner / HWiNFO knows the real die temperature and package power (AMD gives Windows
+        // neither); the ACPI zone and the Intel energy meter are only the fallback.
+        let ext = crate::extsensors::cpu();
+        (c.cpu_temp, c.cpu_temp_src) = match ext.temp {
+            Some((t, src)) => (Some(t), src),
+            None => (win_temp, if win_temp.is_some() { "acpi" } else { "" }),
+        };
+        (c.cpu_power, c.cpu_power_src) = match ext.power {
+            Some((w, src)) => (Some(w), src),
+            None => (win_power, if win_power.is_some() { "meter" } else { "" }),
+        };
         // Every tick: the memory chart's page-file line is part of the history.
         c.pagefile = crate::procs::pagefile();
         if c.cpu_freq == 0 {
@@ -498,6 +548,22 @@ impl Sampler {
             if let Some(p) = &self.pdh {
                 p.collect_gpu();
                 let (counters, pids) = p.gpus();
+                if f.gpu {
+                    let ids: HashSet<String> = counters.keys().cloned().collect();
+                    let stale = gpu_list_stale(self.counter_luids.as_ref(), &ids, all_have_counters(&self.gpus, &ids));
+                    if !stale {
+                        self.counter_luids = Some(ids);
+                    } else if Instant::now() >= self.gpu_relist_at {
+                        let (fresh, wait) = relist_gpus(&self.gpus, self.gpu_relist_wait);
+                        self.gpu_relist_wait = wait;
+                        self.gpu_relist_at = Instant::now() + wait;
+                        if let Some(fresh) = fresh {
+                            self.nvidia_names = nvidia_names_of(&fresh);
+                            self.gpus = fresh;
+                        }
+                        self.counter_luids = Some(ids);
+                    }
+                }
                 c.gpu_pids = pids;
                 c.gpu_pids_at = Some(Instant::now());
                 c.gpus = self
@@ -603,6 +669,12 @@ impl Sampler {
         }
         if f.wifi && tick % 2 == 0 {
             c.wifi = wifi::read();
+            c.wifi_present = c.wifi.is_some();
+            c.wifi_probed = true;
+        } else if !f.wifi && (!c.wifi_probed || tick % 30 == 3) {
+            // The tile is off, so `wifi` is not read, but Settings must still know whether the hardware is there.
+            c.wifi_present = wifi::read().is_some();
+            c.wifi_probed = true;
         }
         if tick % 5 == 1 || c.perf.0 == 0 {
             c.perf = perf_info();
@@ -698,6 +770,33 @@ mod bench {
     }
 
     #[test]
+    #[ignore = "needs a GPU and the Windows counters: run with --ignored --nocapture"]
+    fn live_a_card_that_got_a_new_luid_is_found_again() {
+        let mut s = Sampler::new(None);
+        let f = Features { gpu: true, ..Features::default() };
+        for _ in 0..3 {
+            s.sample(false, f);
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        let real: Vec<String> = s.gpus.iter().map(|g| g.luid.clone()).collect();
+        assert!(!real.is_empty(), "this machine lists no GPU");
+        // What a driver update does to a running program: the saved LUIDs no longer exist.
+        for (i, g) in s.gpus.iter_mut().enumerate() {
+            g.luid = format!("luid_0x00000000_0x0bad{i:04x}");
+        }
+        s.gpu_relist_at = Instant::now();
+        let m = s.sample(false, f);
+        assert_eq!(s.gpus.iter().map(|g| g.luid.clone()).collect::<Vec<_>>(), real, "the list is read again");
+        for g in &m.gpus {
+            println!("{}  usage {:.0} %  vram {} MB / {} MB", g.name, g.usage, g.vram_used >> 20, g.vram_total >> 20);
+        }
+        // Nothing changed now: the next reads must not read the list again before the back-off is over.
+        let at = s.gpu_relist_at;
+        s.sample(false, f);
+        assert_eq!(s.gpu_relist_at, at);
+    }
+
+    #[test]
     #[ignore = "timing benchmark: run with --ignored --nocapture"]
     fn sample_cost() {
         let mut s = Sampler::new(None);
@@ -784,6 +883,45 @@ mod unit {
         assert!(!worth_probing(0.0, 0), "no load, nothing allocated: a sleeping dGPU must be left alone");
         assert!(worth_probing(3.5, 0));
         assert!(worth_probing(0.0, 120 * 1024 * 1024));
+    }
+
+    #[test]
+    fn a_card_that_comes_back_under_a_new_luid_makes_the_list_stale() {
+        let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<HashSet<String>>();
+        let igpu = "luid_0x00000000_0x00014f9a";
+        let dgpu = "luid_0x00000000_0x00014c2b";
+        let gpus = vec![
+            GpuStatic { luid: igpu.into(), ..Default::default() },
+            GpuStatic { luid: dgpu.into(), ..Default::default() },
+        ];
+        let before = ids(&[igpu, dgpu, "luid_0x00000000_0x00014fbf"]); // the last one: a software adapter DXGI leaves out
+        assert!(!gpu_list_stale(None, &before, all_have_counters(&gpus, &before)), "first read, everything matches");
+        assert!(!gpu_list_stale(Some(&before), &before, all_have_counters(&gpus, &before)), "nothing changed");
+
+        // The driver was installed: the card is listed under a new LUID, the integrated one is untouched.
+        let after = ids(&[igpu, "luid_0x00000000_0x0fe650bb", "luid_0x00000000_0x00014fbf"]);
+        assert!(!all_have_counters(&gpus, &after), "the saved dGPU has no counters any more");
+        assert!(gpu_list_stale(Some(&before), &after, all_have_counters(&gpus, &after)));
+        assert!(gpu_list_stale(None, &after, all_have_counters(&gpus, &after)), "started with an outdated list");
+
+        // A new adapter appears (eGPU, virtual display) while the known ones keep their counters.
+        let plus = ids(&[igpu, dgpu, "luid_0x00000000_0x0fe650bb"]);
+        assert!(all_have_counters(&gpus, &plus));
+        assert!(gpu_list_stale(Some(&before), &plus, true));
+
+        // The same card under two LUIDs is covered through its alias.
+        let aliased = vec![GpuStatic { luid: dgpu.into(), alias_luids: vec!["luid_0x00000000_0x0000aaaa".into()], ..Default::default() }];
+        assert!(all_have_counters(&aliased, &ids(&["luid_0x00000000_0x0000aaaa"])));
+        assert!(all_have_counters(&[], &ids(&[])), "no adapters: nothing to be out of date");
+    }
+
+    #[test]
+    fn nvidia_cards_are_picked_by_name() {
+        let gpus = vec![
+            GpuStatic { name: "NVIDIA GeForce RTX 4070".into(), ..Default::default() },
+            GpuStatic { name: "AMD Radeon(TM) Graphics".into(), ..Default::default() },
+        ];
+        assert_eq!(nvidia_names_of(&gpus), vec!["NVIDIA GeForce RTX 4070".to_string()]);
     }
 
     #[test]

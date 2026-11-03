@@ -29,8 +29,9 @@
   );
   const tempBadge = $derived(badgeKind === "temp" && temp != null);
   /** Where the temperature / power come from (the tooltip says how far to trust them). */
-  const tempTip = $derived(m.cpuTempSrc === "acpi" ? tr("tempAcpi") : undefined);
-  const powerTip = undefined;
+  const toolTip = (src?: string) => (src === "afterburner" ? tr("srcAfterburner") : src === "hwinfo" ? tr("srcHwinfo") : undefined);
+  const tempTip = $derived(m.cpuTempSrc === "acpi" ? tr("tempAcpi") : toolTip(m.cpuTempSrc));
+  const powerTip = $derived(toolTip(m.cpuPowerSrc));
   const cpuTone = $derived(!tempBadge || temp == null ? "neutral" : temp < 80 ? "ok" : temp < 92 ? "warn" : "bad");
   /** What the advanced chart draws (Settings > Modules > Customize). */
   const CHARTS: Record<string, { key: string; fmt: (v: number) => string; max?: number; label: Key }> = {

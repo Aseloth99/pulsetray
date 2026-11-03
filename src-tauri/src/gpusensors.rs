@@ -9,7 +9,8 @@
 
 use serde::Serialize;
 use std::ffi::{c_char, c_void};
-use std::sync::OnceLock;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use windows::core::PCWSTR;
 use windows::Wdk::Graphics::Direct3D::{
     D3DKMTCloseAdapter, D3DKMTOpenAdapterFromLuid, D3DKMTQueryAdapterInfo, D3DKMT_ADAPTERADDRESS,
@@ -108,9 +109,11 @@ type FnName = unsafe extern "C" fn(Dev, *mut c_char, u32) -> i32;
 type FnTemp = unsafe extern "C" fn(Dev, i32, *mut u32) -> i32;
 type FnU32 = unsafe extern "C" fn(Dev, *mut u32) -> i32;
 type FnClock = unsafe extern "C" fn(Dev, i32, *mut u32) -> i32;
+type FnShutdown = unsafe extern "C" fn() -> i32;
 
 struct Nvml {
-    _lib: HMODULE,
+    lib: HMODULE,
+    shutdown: Option<FnShutdown>,
     count: FnCount,
     handle: FnHandle,
     name: FnName,
@@ -142,7 +145,8 @@ fn load_nvml() -> Option<Nvml> {
             return None;
         }
         Some(Nvml {
-            _lib: lib,
+            lib,
+            shutdown: sym(lib, b"nvmlShutdown\0"),
             count: sym(lib, b"nvmlDeviceGetCount_v2\0")?,
             handle: sym(lib, b"nvmlDeviceGetHandleByIndex_v2\0")?,
             name: sym(lib, b"nvmlDeviceGetName\0")?,
@@ -155,7 +159,33 @@ fn load_nvml() -> Option<Nvml> {
     }
 }
 
-static NVML: OnceLock<Option<Nvml>> = OnceLock::new();
+impl Nvml {
+    fn unload(self) {
+        unsafe {
+            if let Some(shutdown) = self.shutdown {
+                shutdown();
+            }
+            let _ = FreeLibrary(self.lib);
+        }
+    }
+}
+
+/// NVML is loaded on first use. A driver installed or reset while the program runs leaves the loaded library
+/// out of step with it and every call fails: such a library is unloaded and loaded afresh, not more often
+/// than `NVML_RETRY`.
+struct NvmlSlot {
+    nvml: Option<Nvml>,
+    retry_at: Option<Instant>,
+}
+
+static NVML: Mutex<NvmlSlot> = Mutex::new(NvmlSlot { nvml: None, retry_at: None });
+const NVML_RETRY: Duration = Duration::from_secs(15);
+
+/// NVML return codes that mean the library (not this one query) is broken: not initialised, driver not loaded,
+/// GPU lost, library / driver version mismatch, unknown.
+fn nvml_is_broken(rc: i32) -> bool {
+    matches!(rc, 1 | 9 | 15 | 18 | 999)
+}
 
 fn norm(s: &str) -> String {
     s.to_lowercase().replace("nvidia", "").replace("geforce", "").split_whitespace().collect::<Vec<_>>().join(" ")
@@ -185,17 +215,47 @@ pub fn pick_device(gpu_name: &str, dxgi_nvidia: &[String], nvml: &[String]) -> O
 }
 
 fn from_nvml(gpu_name: &str, dxgi_nvidia: &[String]) -> Option<GpuSensors> {
-    let n = NVML.get_or_init(load_nvml).as_ref()?;
+    let mut slot = NVML.lock().ok()?;
+    if slot.nvml.is_none() {
+        if slot.retry_at.is_some_and(|t| Instant::now() < t) {
+            return None;
+        }
+        slot.nvml = load_nvml();
+        if slot.nvml.is_none() {
+            slot.retry_at = Some(Instant::now() + NVML_RETRY);
+            return None;
+        }
+    }
+    match query_nvml(slot.nvml.as_ref()?, gpu_name, dxgi_nvidia) {
+        Ok(sensors) => sensors,
+        Err(()) => {
+            if let Some(n) = slot.nvml.take() {
+                n.unload();
+            }
+            slot.retry_at = Some(Instant::now() + NVML_RETRY);
+            None
+        }
+    }
+}
+
+/// `Err` = the library itself is broken (see `NvmlSlot`), `Ok(None)` = it works but has nothing for this adapter.
+fn query_nvml(n: &Nvml, gpu_name: &str, dxgi_nvidia: &[String]) -> Result<Option<GpuSensors>, ()> {
     unsafe {
         let mut count = 0u32;
-        if (n.count)(&mut count) != 0 || count == 0 {
-            return None;
+        let rc = (n.count)(&mut count);
+        // The caller only asks for an NVIDIA adapter, so a library that sees no device at all is out of step too.
+        if rc != 0 || count == 0 {
+            return Err(());
         }
         let mut devs: Vec<Dev> = Vec::new();
         let mut names: Vec<String> = Vec::new();
         for i in 0..count.min(16) {
             let mut dev: Dev = std::ptr::null_mut();
-            if (n.handle)(i, &mut dev) != 0 {
+            let rc = (n.handle)(i, &mut dev);
+            if nvml_is_broken(rc) {
+                return Err(());
+            }
+            if rc != 0 {
                 continue;
             }
             let mut buf = [0 as c_char; 96];
@@ -207,11 +267,16 @@ fn from_nvml(gpu_name: &str, dxgi_nvidia: &[String]) -> Option<GpuSensors> {
             devs.push(dev);
             names.push(name);
         }
-        let dev = devs[pick_device(gpu_name, dxgi_nvidia, &names)?];
+        let Some(pick) = pick_device(gpu_name, dxgi_nvidia, &names) else { return Ok(None) };
+        let dev = devs[pick];
 
         let mut s = GpuSensors::default();
         let mut v = 0u32;
-        if (n.temp)(dev, 0, &mut v) == 0 {
+        let rc = (n.temp)(dev, 0, &mut v);
+        if nvml_is_broken(rc) {
+            return Err(());
+        }
+        if rc == 0 {
             s.temp_c = Some(v as f32);
         }
         if (n.power)(dev, &mut v) == 0 {
@@ -229,7 +294,7 @@ fn from_nvml(gpu_name: &str, dxgi_nvidia: &[String]) -> Option<GpuSensors> {
         if (n.clock)(dev, 2, &mut v) == 0 {
             s.mem_mhz = Some(v);
         }
-        Some(s)
+        Ok(Some(s))
     }
 }
 
@@ -286,6 +351,17 @@ mod tests {
         let dxgi = v(&["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3060"]);
         assert_eq!(pick_device("NVIDIA GeForce RTX 4090", &dxgi, &v(&["", ""])), None);
         assert_eq!(pick_device("", &dxgi, &v(&["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3060"])), None);
+    }
+
+    #[test]
+    fn only_codes_that_mean_a_broken_library_cause_a_reload() {
+        for rc in [1, 9, 15, 18, 999] {
+            assert!(nvml_is_broken(rc), "{rc}");
+        }
+        // 0 = fine, 2 = bad argument, 3 = not supported on this card, 6 = timeout: this one query, not the library
+        for rc in [0, 2, 3, 6] {
+            assert!(!nvml_is_broken(rc), "{rc}");
+        }
     }
 
     #[test]
