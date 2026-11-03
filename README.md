@@ -53,6 +53,7 @@ PulseTray sits in the tray and costs next to nothing until you open it. A click 
 ### More to know
 
 - **Battery history** comes from Windows' own battery report (`powercfg /batteryreport /xml`, no administrator needed): how the battery's health developed since the first record, screen-on time on battery and on AC for up to the last 14 days (Windows keeps older days per week, so there can be fewer days; the header says how many), and the charge level of the last days.
+- **Quick switch:** in Advanced view, click a tile's header badge or the chart's name (with the small arrow) to pick another value or chart right there, e.g. CPU temperature or clock instead of usage. It is the same choice as below.
 - **Customize** (Settings > Modules, slider icon): in Advanced view, choose each tile's rows, header badge and chart. Top Apps also has a start tab, list length, tabs, icons and the ×n counter; Latency has chart, summary values and the IP row. Options your PC cannot measure are greyed out with the reason underneath; a tile that was set to one falls back to the first measurable option.
 - **Pin the panel:** it stays open, can be dragged and resized, and remembers its size separately for Classic and Advanced.
 - **Tiles** can be hidden and reordered, separately for each view. On a fresh start Latency and Wi-Fi are off and System is on. PulseTray registers itself to start at login on the first run; Settings > General > **Start at Login** turns that off, and it is not switched on again afterwards.

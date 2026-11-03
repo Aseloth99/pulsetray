@@ -223,6 +223,15 @@ export const DETAIL: Record<string, DetailDef> = {
   },
 };
 
+/** A header badge / chart that can be switched from the tile itself (see `Caps.quick`). */
+export interface QuickPick {
+  options: { id: string; label: string }[];
+  value: string;
+  set: (id: string) => void;
+  /** Tooltip of the button that opens the list. */
+  tip: string;
+}
+
 /** One tile's choices; `null` = the default (first option). */
 export interface Detail {
   hide: string[];

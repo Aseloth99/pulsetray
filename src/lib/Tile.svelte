@@ -5,6 +5,8 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import Icon from "./Icon.svelte";
+  import OptionMenu from "./OptionMenu.svelte";
+  import type { QuickPick } from "./tiledetail";
   import { tip } from "./tipstate.svelte";
 
   let {
@@ -17,6 +19,7 @@
     badgeTone = "neutral",
     badgeIcon,
     badgeTip,
+    badgePick,
     actions,
     children,
   }: {
@@ -31,6 +34,8 @@
     badgeTone?: Tone;
     badgeIcon?: string;
     badgeTip?: string;
+    /** Makes the badge a button that lists what it can show instead (same choice as in Settings). */
+    badgePick?: QuickPick;
     /** Extra header controls (buttons) to the right of the badge. */
     actions?: Snippet;
     children: Snippet;
@@ -42,9 +47,27 @@
     <span class="ico" style="color:{color}"><Icon name={icon} size={15} /></span>
     <h2 title={title}>{title}</h2>
     {#if badge}
-      <span class="badge {badgeTone}" use:tip={badgeTip ?? ""}>
+      {#snippet content()}
         {#if badgeIcon}<Icon name={badgeIcon} size={11} />{/if}{#if badgeLabel}<span class="bl">{badgeLabel}</span>{/if}{badge}
-      </span>
+      {/snippet}
+      {#if badgePick}
+        <OptionMenu pick={badgePick} align="end">
+          {#snippet trigger({ toggle, open })}
+            <button
+              type="button"
+              class="badge pick {badgeTone}"
+              aria-haspopup="menu"
+              aria-expanded={open}
+              use:tip={open ? "" : [badgeTip, badgePick.tip].filter(Boolean).join("\n")}
+              onclick={toggle}
+            >
+              {@render content()}<Icon name="down" size={10} />
+            </button>
+          {/snippet}
+        </OptionMenu>
+      {:else}
+        <span class="badge {badgeTone}" use:tip={badgeTip ?? ""}>{@render content()}</span>
+      {/if}
     {/if}
     {@render actions?.()}
   </header>
@@ -101,6 +124,22 @@
     font-weight: 600;
     color: var(--muted);
     white-space: nowrap;
+  }
+  button.badge {
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  button.badge:hover,
+  button.badge[aria-expanded="true"] {
+    box-shadow: var(--inset-sm), 0 0 0 1px color-mix(in srgb, var(--muted) 45%, transparent);
+  }
+  .badge.pick {
+    padding-right: 6px;
+  }
+  .badge.pick :global(svg:last-child) {
+    opacity: 0.65;
   }
   .badge .bl {
     color: var(--muted);

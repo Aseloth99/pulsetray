@@ -31,6 +31,7 @@ PulseTray tepside durur ve siz açana kadar neredeyse hiçbir şeye mal olmaz. S
 - **Mini Gösterge:** masaüstünde her zaman üstte duran küçük bir kart (FPS, CPU, GPU, RAM, ağ, disk). Odak çalmaz, tam ekran uygulamalarda gizlenir.
 - **İsteğe bağlı uyarılar**, Windows bildirimi olarak (disk dolmak üzere, bellek sınıra yaklaştı, yüksek sıcaklık, disk sağlığı kötüleşti, bir uygulama işlemciyi yiyor).
 - **Tepsi ekstraları:** tepsi simgesi olarak canlı işlemci, ekran kartı ya da RAM yüzdesi, canlı değerlerle ipucu ve temaya uyan sağ tık menüsü.
+- **Hızlı geçiş:** Gelişmiş görünümde kutucuğun başlık rozetine ya da grafiğin adına (yanındaki küçük okla) tıklayarak değeri veya grafiği oradan değiştirme; örneğin işlemcide kullanım yerine sıcaklık ya da hız. Aşağıdaki seçimle aynıdır.
 - **Kutucuk başına özelleştirme:** Gelişmiş görünümde her kutucuk için gizleme, sıralama, satırları, başlık rozetini ve grafiği seçme.
 - **İki görsel tasarım** (Neumorfik ve Cam), açık, koyu ya da sistem teması; Türkçe ve İngilizce.
 - **Kendini günceller:** günlük denetim, ilerlemeli indirme, SHA-256 doğrulaması, sessiz yeniden başlatma; yeni sürüm açılışta sürekli düşerse otomatik geri dönüş.

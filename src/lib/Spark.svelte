@@ -25,7 +25,10 @@
   import { tr } from "./tr";
   import type { Key } from "./i18n";
   import { bytes as fmtBytes, rate } from "./format";
-  import { tooltip } from "./tipstate.svelte";
+  import { tooltip, tip } from "./tipstate.svelte";
+  import Icon from "./Icon.svelte";
+  import OptionMenu from "./OptionMenu.svelte";
+  import type { QuickPick } from "./tiledetail";
 
   /** "Who caused this peak?": the apps that used the most of this resource around the hovered moment. */
   type Who = "cpu" | "mem" | "disk" | "gpu";
@@ -48,6 +51,7 @@
     detail = false,
     gapMs = 3500,
     label,
+    pick,
     who,
   }: {
     data: V[];
@@ -72,6 +76,8 @@
     /** What the series is ("RAM", "Sanal bellek", "Sıcaklık"...): shown before the scale in `detail`, in the series
      *  colour — a tile that can chart several things otherwise said only "100%". */
     label?: string;
+    /** Makes the label a button that lists the other things this tile can chart. */
+    pick?: QuickPick;
     /** Charts with a time axis: the hover also names the apps that used the most then (CPU, memory, disk, GPU). */
     who?: Who;
   } = $props();
@@ -255,7 +261,15 @@
 <div class="chart">
   {#if detail && fmt}
     <div class="labels">
-      <span class="scale">{#if label}<b class="name" style="color:{color}">{label}</b><span class="sep">·</span>{/if}{scale}</span>
+      <span class="scale">{#if label}{#if pick}<OptionMenu {pick} align="start">{#snippet trigger({ toggle, open })}<button
+              type="button"
+              class="name pick"
+              style="color:{color}"
+              aria-haspopup="menu"
+              aria-expanded={open}
+              use:tip={open ? "" : pick.tip}
+              onclick={toggle}><b>{label}</b><Icon name="down" size={9} /></button
+            >{/snippet}</OptionMenu>{:else}<b class="name" style="color:{color}">{label}</b>{/if}<span class="sep">·</span>{/if}{scale}</span>
       {#if hovered}
         <span class="read"><b>{fmt(hovered.v as number)}</b> · {ago(hovered)}</span>
       {:else if peak && (peak.v as number) > 0}
@@ -318,6 +332,25 @@
   }
   .name {
     font-weight: 700;
+  }
+  button.pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    margin: -2px 0 -2px -6px;
+    padding: 2px 5px 2px 6px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  button.pick :global(svg) {
+    opacity: 0.7;
+  }
+  button.pick:hover,
+  button.pick[aria-expanded="true"] {
+    box-shadow: var(--inset-sm);
   }
   .read {
     min-width: 0;

@@ -11,6 +11,7 @@
   import type { Key } from "../i18n";
   import type { Metrics, Proc } from "../metrics.svelte";
   import { apps } from "../apps.svelte";
+  import { caps } from "../caps.svelte";
   import { settings } from "../settings.svelte";
 
   type Sort = "cpu" | "mem" | "disk" | "gpu";
@@ -178,6 +179,7 @@
   color="var(--cpu)"
   {span}
   badge={badge || undefined}
+  badgePick={caps.quick("processes", "badge")}
 >
   {#if show("tabs")}
     <div class="seg">

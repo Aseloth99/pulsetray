@@ -71,6 +71,7 @@
     color="var(--gpu)"
     {span}
     badge={adv ? b.text : undefined}
+    badgePick={caps.quick("gpu", "badge")}
     badgeTone={!b.hot || hot == null ? "neutral" : hot < 80 ? "ok" : hot < 90 ? "warn" : "bad"}
   >
     {#if m.gpus.length > 1}
@@ -113,6 +114,7 @@
           max={chartKind === "power" && s.powerLimitW ? s.powerLimitW : ch.max}
           fmt={ch.fmt}
           label={tr(ch.label)}
+          pick={caps.quick("gpu", "chart")}
           height={64}
           who="gpu"
           detail

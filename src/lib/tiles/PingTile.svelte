@@ -5,6 +5,7 @@
   import Icon from "../Icon.svelte";
   import { lower, tr } from "../tr";
   import { clock, mmss } from "../format";
+  import { caps } from "../caps.svelte";
   import { settings } from "../settings.svelte";
   import { store, type Metrics } from "../metrics.svelte";
   import { tip } from "../tipstate.svelte";
@@ -160,6 +161,7 @@
   {span}
   badge={badgeInfo.text}
   badgeTone={badgeInfo.tone}
+  badgePick={caps.quick("ping", "badge")}
 >
   {#snippet actions()}
     <span class="acts" data-ping-menu>

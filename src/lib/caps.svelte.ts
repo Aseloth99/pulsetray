@@ -2,7 +2,8 @@ import type { Key } from "./i18n";
 import type { Metrics } from "./metrics.svelte";
 import { store } from "./metrics.svelte";
 import { settings, type TileId } from "./settings.svelte";
-import { DETAIL } from "./tiledetail";
+import { DETAIL, type QuickPick } from "./tiledetail";
+import { tr } from "./tr";
 
 /** Always-measured values: missing for this long (not one failed read) before an option is greyed out. */
 const HOLD_MS = 5000;
@@ -85,6 +86,22 @@ class Caps {
 
   chart(tile: TileId): string {
     return this.pick(tile, settings.chartOf(tile), DETAIL[tile]?.charts);
+  }
+
+  /**
+   * The list behind a tile's header badge / chart label: what this PC can show, without "none" (a hidden badge
+   * would leave nothing to click on). The choice is the same setting as in Settings > Modules > Customize.
+   * Undefined when there is nothing to choose between.
+   */
+  quick(tile: TileId, kind: "badge" | "chart"): QuickPick | undefined {
+    const defs = kind === "badge" ? DETAIL[tile]?.badges : DETAIL[tile]?.charts;
+    const options = (defs ?? [])
+      .filter(([id]) => id !== "none" && !this.why(tile, id))
+      .map(([id, key]) => ({ id, label: tr(key) }));
+    if (options.length < 2) return undefined;
+    return kind === "badge"
+      ? { options, value: this.badge(tile), set: (id) => settings.setBadge(tile, id), tip: tr("pickBadgeTip") }
+      : { options, value: this.chart(tile), set: (id) => settings.setChart(tile, id), tip: tr("pickChartTip") };
   }
 
   private pick(tile: TileId, chosen: string, options?: [string, Key][]): string {

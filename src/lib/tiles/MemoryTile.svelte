@@ -80,6 +80,7 @@
   {badgeLabel}
   badgeTone={tone}
   {badgeTip}
+  badgePick={caps.quick("memory", "badge")}
 >
   <div class="pair">
     <div class="cell">
@@ -107,6 +108,7 @@
         max={100}
         fmt={percent}
         label={tr(chartKey === "mem.swap" ? "swap" : "ram")}
+        pick={caps.quick("memory", "chart")}
         height={56}
         who="mem"
         detail

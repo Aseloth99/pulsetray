@@ -95,6 +95,7 @@
         ? "warn"
         : "neutral"}
   badgeTip={badgeKind === "temp" && hottest ? `${tr("driveTemp")} · ${modelOf(hottest)}` : undefined}
+  badgePick={caps.quick("disk", "badge")}
 >
   {#each show("drives") ? drives : [] as d, i (i)}
     <div class="bar-row">
@@ -123,6 +124,7 @@
         bytes={chart.bytes}
         floor={chart.bytes ? 1024 : 1}
         label={tr(chartKind as Key)}
+        pick={caps.quick("disk", "chart")}
         height={56}
         who="disk"
         detail

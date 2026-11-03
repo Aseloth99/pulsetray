@@ -90,6 +90,7 @@
   badge={adv && cpuBadge ? cpuBadge : undefined}
   badgeTone={cpuTone}
   badgeTip={tempBadge ? (tempTip ?? "") : ""}
+  badgePick={caps.quick("cpu", "badge")}
 >
   {#if adv}
     {#if show("model")}<p class="model" title={name}>{name}</p>{/if}
@@ -125,6 +126,7 @@
         max={chart.max}
         fmt={chart.fmt}
         label={tr(chart.label)}
+        pick={caps.quick("cpu", "chart")}
         height={64}
         who="cpu"
         detail
