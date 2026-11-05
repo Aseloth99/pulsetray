@@ -108,6 +108,9 @@ struct AppState {
     resizing_since: AtomicU64,
     /// Where the user left a pinned popup, so hiding and showing it again doesn't move it.
     pinned_pos: Mutex<Option<PhysicalPosition<i32>>>,
+    /// Where `place_popup` last put the popup: a window still there has not been moved by the user, so a size change
+    /// places it by the same rule again (next to the tray icon) instead of keeping a corner.
+    auto_pos: Mutex<Option<PhysicalPosition<i32>>>,
     /// Tray icon centre (physical px) the popup was last anchored to, so a resize can re-place it.
     anchor: Mutex<Option<(f64, f64)>>,
     /// The WebView2 runtime has been told to give memory back (popup hidden for a while).
@@ -469,7 +472,64 @@ fn resize_popup(window: WebviewWindow, state: AppStateRef<'_>, width: f64, heigh
         w = w.min(mon.size().width as f64 / scale);
         h = h.min(mon.size().height as f64 / scale);
     }
+    let before = window.outer_position().ok().zip(window.outer_size().ok());
     let _ = window.set_size(LogicalSize::new(w, h));
+    // The size follows the mode (classic / advanced) or a fit, not the user's hand: the window must not end up
+    // floating mid-screen because its top-left corner stayed put while the bottom or right edge moved.
+    let Some((pos, old)) = before else { return };
+    // Still where the app put it (next to the tray icon): place it by the same rule for the new size.
+    let auto = *state.auto_pos.lock().unwrap();
+    let anchor = *state.anchor.lock().unwrap();
+    if let (Some(auto), Some(anchor)) = (auto, anchor) {
+        if (auto.x - pos.x).abs() <= 4 && (auto.y - pos.y).abs() <= 4 {
+            place_popup(&window, &state, anchor, true);
+            return;
+        }
+    }
+    let Ok(new) = window.outer_size() else { return };
+    let centre = (pos.x as f64 + old.width as f64 / 2.0, pos.y as f64 + old.height as f64 / 2.0);
+    let Ok(Some(mon)) = window.app_handle().monitor_from_point(centre.0, centre.1) else { return };
+    let wa = mon.work_area();
+    let area = (wa.position.x, wa.position.y, wa.position.x + wa.size.width as i32, wa.position.y + wa.size.height as i32);
+    let tol = ((MARGIN + 16.0) * mon.scale_factor()).round() as i32;
+    let anchor_below = state.anchor.lock().unwrap().is_none_or(|(_, ay)| ay > (area.1 + area.3) as f64 / 2.0);
+    let want = keep_edges(
+        area,
+        (pos.x, pos.y),
+        (old.width as i32, old.height as i32),
+        (new.width as i32, new.height as i32),
+        tol,
+        anchor_below,
+    );
+    if want != (pos.x, pos.y) {
+        let _ = window.set_position(PhysicalPosition::new(want.0, want.1));
+    }
+}
+
+/// Top-left corner for a window that changes from the `old` to the `new` size (all physical pixels, `area` =
+/// left, top, right, bottom of the work area). A window that sat against the right or bottom edge of the screen
+/// (within `tol`) keeps that edge, so the popup next to the tray stays next to the tray when it gets smaller or
+/// larger; any other window keeps its top-left corner. Always inside the work area afterwards.
+/// When both opposite edges are close, the bottom one wins if `anchor_below` (the tray is at the bottom), the left
+/// and top ones otherwise.
+fn keep_edges(
+    area: (i32, i32, i32, i32),
+    pos: (i32, i32),
+    old: (i32, i32),
+    new: (i32, i32),
+    tol: i32,
+    anchor_below: bool,
+) -> (i32, i32) {
+    let axis = |lo: i32, hi: i32, p: i32, o: i32, n: i32, prefer_high: bool| {
+        let near_lo = p - lo <= tol;
+        let near_hi = hi - (p + o) <= tol;
+        let start = if near_hi && (!near_lo || prefer_high) { p + o - n } else { p };
+        start.clamp(lo, (hi - n).max(lo))
+    };
+    (
+        axis(area.0, area.2, pos.0, old.0, new.0, false),
+        axis(area.1, area.3, pos.1, old.1, new.1, anchor_below),
+    )
 }
 
 /// A pinned popup, or one the user has resized, keeps its size instead of fitting the content.
@@ -744,6 +804,7 @@ fn place_popup(window: &WebviewWindow, state: &AppState, (ax, ay): (f64, f64), k
         let _ = window.set_size(PhysicalSize::new(w.round().max(1.0) as u32, h.round().max(1.0) as u32));
         let _ = window.set_position(pos);
     }
+    *state.auto_pos.lock().unwrap() = Some(pos);
 }
 
 fn on_a_monitor(app: &AppHandle, p: &PhysicalPosition<i32>) -> bool {
@@ -1625,6 +1686,7 @@ pub fn run() {
                 refit_height: AtomicBool::new(false),
                 resizing_since: AtomicU64::new(0),
                 pinned_pos: Mutex::new(None),
+                auto_pos: Mutex::new(None),
                 anchor: Mutex::new(None),
                 trimmed: AtomicBool::new(false),
                 features: Mutex::new(Features::default()),
@@ -1973,6 +2035,51 @@ mod tests {
     fn an_empty_rect_is_not_an_anchor() {
         assert_eq!(rect_center(&rect(0.0, 0.0, 0, 0)), None);
         assert_eq!(rect_center(&rect(500.0, 500.0, 0, 30)), None);
+    }
+
+    const AREA: (i32, i32, i32, i32) = (0, 0, 1920, 1040);
+
+    #[test]
+    fn a_popup_at_the_bottom_right_corner_keeps_its_corner_when_it_shrinks() {
+        // Advanced 736x980 against the bottom right (8 px margin) becomes classic 564x700.
+        let pos = (1920 - 736 - 8, 1040 - 980 - 8);
+        assert_eq!(keep_edges(AREA, pos, (736, 980), (564, 700), 24, true), (1920 - 564 - 8, 1040 - 700 - 8));
+        // ... and back: it grows to the top left, not off the screen.
+        let pos = (1920 - 564 - 8, 1040 - 700 - 8);
+        assert_eq!(keep_edges(AREA, pos, (564, 700), (736, 980), 24, true), (1920 - 736 - 8, 1040 - 980 - 8));
+    }
+
+    #[test]
+    fn a_popup_in_the_middle_keeps_its_top_left_corner() {
+        assert_eq!(keep_edges(AREA, (400, 100), (736, 800), (564, 600), 24, true), (400, 100));
+    }
+
+    #[test]
+    fn only_the_edge_that_was_close_is_kept() {
+        // Against the bottom only: x stays, the bottom edge stays.
+        assert_eq!(keep_edges(AREA, (400, 1040 - 800 - 8), (736, 800), (564, 600), 24, true), (400, 1040 - 600 - 8));
+        // Against the right only: y stays.
+        assert_eq!(keep_edges(AREA, (1920 - 736 - 8, 100), (736, 800), (564, 600), 24, true), (1920 - 564 - 8, 100));
+    }
+
+    #[test]
+    fn a_popup_at_the_top_of_the_screen_stays_at_the_top() {
+        // The taskbar is at the top: the popup hangs below it and keeps its top edge.
+        assert_eq!(keep_edges(AREA, (1920 - 736 - 8, 8), (736, 800), (564, 600), 24, false), (1920 - 564 - 8, 8));
+        // As tall as the screen: both edges are close, the tray decides.
+        assert_eq!(keep_edges(AREA, (100, 8), (500, 1024), (500, 600), 24, false), (100, 8));
+        assert_eq!(keep_edges(AREA, (100, 8), (500, 1024), (500, 600), 24, true), (100, 1040 - 600 - 8));
+    }
+
+    #[test]
+    fn a_resized_popup_never_leaves_the_work_area() {
+        // Grows in the middle of the screen: pulled back in at the bottom / right.
+        assert_eq!(keep_edges(AREA, (1400, 600), (400, 300), (736, 980), 24, true), (1920 - 736, 1040 - 980));
+        // Bigger than the work area: starts at its top left.
+        assert_eq!(keep_edges(AREA, (300, 300), (400, 300), (3000, 2000), 24, true), (0, 0));
+        // A second monitor to the left of the primary one (negative coordinates).
+        let left = (-1920, 0, 0, 1040);
+        assert_eq!(keep_edges(left, (-736 - 8, 100), (736, 700), (564, 500), 24, true), (-564 - 8, 100));
     }
 
     const WORK: (f64, f64, f64, f64) = (0.0, 0.0, 1920.0, 1040.0); // 1080p with a 40 px taskbar at the bottom

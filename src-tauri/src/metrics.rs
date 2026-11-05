@@ -310,6 +310,18 @@ fn is_virtual(name: &str) -> bool {
     .any(|k| n.contains(k))
 }
 
+/// Filter drivers (the Windows filtering platform, traffic shaping such as cFosSpeed, packet capture, QoS) are
+/// listed as interfaces of their own, "<adapter>-<filter name>-0000", with the adapter's own counters. Counted
+/// next to the adapter, the same traffic came out two or three times too high (speed, today, this session).
+fn is_filter_layer(name: &str, all: &[&str]) -> bool {
+    let b = name.as_bytes();
+    if b.len() < 6 || b[b.len() - 5] != b'-' || !b[b.len() - 4..].iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    let base = &name[..name.len() - 5];
+    all.iter().any(|a| *a != name && base.len() > a.len() && base.starts_with(a) && base.as_bytes()[a.len()] == b'-')
+}
+
 impl Sampler {
     pub fn new(data_dir: Option<PathBuf>) -> Self {
         let sys = System::new_with_specifics(
@@ -359,8 +371,9 @@ impl Sampler {
         // --- network (always: tooltip + daily totals)
         let (mut rx, mut tx, mut boot_rx, mut boot_tx) = (0u64, 0u64, 0u64, 0u64);
         let mut best: Option<(u64, NetAdapterNow)> = None;
+        let names: Vec<&str> = self.networks.keys().map(|n| n.as_str()).collect();
         for (name, data) in self.networks.iter() {
-            if is_virtual(name) {
+            if is_virtual(name) || is_filter_layer(name, &names) {
                 continue;
             }
             rx += data.received();
@@ -634,7 +647,10 @@ impl Sampler {
                     e.count += 1;
                     e.pids.push(p.pid);
                 }
-                let all: Vec<ProcInfo> = agg.into_values().collect();
+                let mut all: Vec<ProcInfo> = agg.into_values().collect();
+                if gpu_fresh {
+                    assign_guest_gpu(&mut all, c.gpu_pids.get(&0).copied().unwrap_or(0.0));
+                }
                 let top = |key: fn(&ProcInfo) -> f64| {
                     let mut v = all.clone();
                     v.sort_by(|a, b| key(b).total_cmp(&key(a)));
@@ -747,6 +763,29 @@ fn read_battery(_detail: Option<BatteryDetail>) -> Battery {
     Battery::default()
 }
 
+/// GPU work Windows cannot tie to a process is reported under pid 0: that is what a WSL 2 / Hyper-V guest using
+/// the card (CUDA in Linux, say) looks like, and nothing in the process list owned it, so a card at 75 % showed
+/// an app list with 0.1 %. The guest's CPU and memory are already charged to its host process (`vmmem`, or the
+/// `vmwp.exe` worker where there is none), so its GPU load goes there too. Without any such process the load
+/// stays unassigned: better no row than a wrong one. Returns whether a host was found.
+fn assign_guest_gpu(all: &mut [ProcInfo], load: f32) -> bool {
+    if load.is_nan() || load <= 0.0 {
+        return false;
+    }
+    let lower = |p: &ProcInfo| p.name.to_ascii_lowercase();
+    // vmmem, vmmemWSL, vmmemCmZygote...: the biggest one if there are several VMs.
+    let host = all
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| lower(p).starts_with("vmmem"))
+        .max_by_key(|(_, p)| p.mem)
+        .map(|(i, _)| i)
+        .or_else(|| all.iter().position(|p| lower(p) == "vmwp.exe"));
+    let Some(i) = host else { return false };
+    all[i].gpu = (all[i].gpu + load).min(100.0);
+    true
+}
+
 #[cfg(test)]
 mod bench {
     use super::*;
@@ -794,6 +833,69 @@ mod bench {
         let at = s.gpu_relist_at;
         s.sample(false, f);
         assert_eq!(s.gpu_relist_at, at);
+    }
+
+    #[test]
+    #[ignore = "needs a busy GPU and the Windows counters: run with --ignored --nocapture"]
+    fn live_the_app_list_explains_a_busy_card() {
+        let mut s = Sampler::new(None);
+        let f = Features { processes: true, gpu: true, ..Features::default() };
+        let (mut busy, mut explained, mut worst) = (0, 0, 0.0f32);
+        for i in 0..16 {
+            let m = s.sample(true, f);
+            std::thread::sleep(Duration::from_millis(1000));
+            let card = m.gpus.iter().map(|g| g.usage).fold(0.0, f32::max);
+            let top = m.top_gpu.first();
+            println!(
+                "t{i:02} card {card:5.1} %  top apps {:?}",
+                m.top_gpu.iter().take(3).map(|p| format!("{} {:.1}", p.name, p.gpu)).collect::<Vec<_>>()
+            );
+            if i < 4 || !m.procs_gpu_fresh {
+                continue; // counters and the process list need a first reading to diff against
+            }
+            if card >= 20.0 {
+                busy += 1;
+                let seen = top.map_or(0.0, |p| p.gpu);
+                worst = worst.max(card - seen);
+                if seen >= card * 0.5 {
+                    explained += 1;
+                }
+            }
+        }
+        println!("busy samples {busy}, explained {explained}, largest gap {worst:.1} points");
+        assert!(busy == 0 || explained == busy, "the list left a busy card unexplained in {} of {busy} samples", busy - explained);
+    }
+
+    #[test]
+    #[ignore = "writes this machine's readings to the file named by PULSETRAY_DUMP, for comparing with other tools"]
+    fn live_dump_readings() {
+        let path = std::env::var("PULSETRAY_DUMP").expect("PULSETRAY_DUMP names the output file");
+        let secs: usize = std::env::var("PULSETRAY_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(15);
+        let mut s = Sampler::new(None);
+        let all = Features { processes: true, gpu: true, battery: true, wifi: true, ping: false, alerts: true };
+        let mut m = s.sample(true, all);
+        let mut series = Vec::new();
+        for _ in 0..secs {
+            std::thread::sleep(Duration::from_millis(1000));
+            m = s.sample(true, all);
+            series.push(serde_json::json!({
+                "ts": m.ts_ms, "cpu": m.cpu_usage, "perCore": m.cpu_per_core, "memUsed": m.mem_used, "down": m.net_down,
+                "up": m.net_up, "read": m.disk_read, "write": m.disk_write, "active": m.disk_active,
+                "gpu": m.gpus.iter().map(|g| g.usage).collect::<Vec<_>>(),
+                "topCpu": m.top_cpu.iter().take(6).map(|p| serde_json::json!([p.name, p.cpu])).collect::<Vec<_>>(),
+            }));
+        }
+        let out = serde_json::json!({ "last": m, "series": series });
+        std::fs::write(path, serde_json::to_string_pretty(&out).unwrap()).unwrap();
+    }
+
+    #[test]
+    #[ignore = "prints the interfaces sysinfo lists: run with --ignored --nocapture"]
+    fn live_list_networks() {
+        let n = Networks::new_with_refreshed_list();
+        for (name, d) in n.iter() {
+            println!("{:<60} virtual={:<5} rx {:>16} tx {:>16} mac {} ips {:?}", name, is_virtual(name), d.total_received(), d.total_transmitted(), d.mac_address(), d.ip_networks().iter().map(|i| i.addr.to_string()).collect::<Vec<_>>());
+        }
     }
 
     #[test]
@@ -931,6 +1033,34 @@ mod unit {
         assert_eq!(normalize_rate(-8_500, false, false), -8_500);
         assert_eq!(normalize_rate(300, false, true), 300, "plugged in and idle: leave it alone");
         assert_eq!(normalize_rate(i32::MIN, false, false), -i32::MAX, "no overflow on the most negative value");
+    }
+
+    #[test]
+    fn filter_layers_of_an_adapter_are_not_counted_again() {
+        // The interfaces of the user's PC: the card, two filter drivers on it, virtual adapters.
+        let all = [
+            "VMware Network Adapter VMnet8",
+            "Ethernet-WFP Native MAC Layer LightWeight Filter-0000",
+            "vEthernet (WSL)",
+            "Ethernet-cFosSpeed for faster Internet with Traffic Shaping-0000",
+            "Ethernet",
+            "Wi-Fi",
+            "Wi-Fi-QoS Packet Scheduler-0001",
+        ];
+        for n in [all[1], all[3], all[6]] {
+            assert!(is_filter_layer(n, &all), "{n}");
+        }
+        for n in [all[0], all[2], all[4], all[5]] {
+            assert!(!is_filter_layer(n, &all), "{n}");
+        }
+        // A suffix alone is not enough: there must be an adapter it is a layer of.
+        assert!(!is_filter_layer("Ethernet-Foo-0000", &["Ethernet-Foo-0000"]));
+        assert!(!is_filter_layer("Docker-Net-0000", &["Ethernet", "Wi-Fi"]));
+        assert!(!is_filter_layer("Ethernet 2", &["Ethernet", "Ethernet 2"]));
+        assert!(!is_filter_layer("Ethernet-1234", &["Ethernet", "Ethernet-1234"]), "no filter name between");
+        assert!(!is_filter_layer("", &[]) && !is_filter_layer("-0000", &["-0000"]) && !is_filter_layer("ab", &["a"]));
+        // Another adapter whose name merely starts the same way is not its parent.
+        assert!(!is_filter_layer("Ethernet2-WFP-0000", &["Ethernet", "Ethernet2-WFP-0000"]));
     }
 
     #[test]

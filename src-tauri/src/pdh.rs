@@ -171,33 +171,17 @@ impl Pdh {
     }
 
     /// Per-adapter GPU counters keyed by LUID string, e.g. `luid_0x00000000_0x000145a3`.
-    /// Also returns the load per process id (busiest engine type), for the "top apps" list.
+    /// Also returns the load per process id (its busiest engine), for the "top apps" list. Work Windows cannot
+    /// tie to a process (a WSL 2 / Hyper-V guest using the card) is under pid 0.
     pub fn gpus(&self) -> (HashMap<String, GpuCounters>, HashMap<u32, f32>) {
         let mut out: HashMap<String, GpuCounters> = HashMap::new();
         let mut pids: HashMap<u32, f32> = HashMap::new();
 
         if let Some(c) = self.gpu_eng {
-            // Sum engine load per (adapter, engine type); the adapter load is the busiest engine type,
-            // which is how Task Manager reports it.
-            let mut per_type: HashMap<(String, String), f64> = HashMap::new();
-            let mut per_pid: HashMap<(u32, String), f64> = HashMap::new();
-            for (name, v) in unsafe { read_array(c) } {
-                let name = name.to_lowercase();
-                let (Some(luid), Some(eng)) = (luid_of(&name), name.split("engtype_").nth(1)) else {
-                    continue;
-                };
-                if let Some(pid) = pid_of(&name) {
-                    *per_pid.entry((pid, eng.to_string())).or_default() += v;
-                }
-                *per_type.entry((luid, eng.to_string())).or_default() += v;
-            }
-            for ((pid, _), v) in per_pid {
-                let e = pids.entry(pid).or_default();
-                *e = e.max(v as f32);
-            }
-            for ((luid, _), v) in per_type {
-                let e = out.entry(luid).or_default();
-                e.usage = e.usage.max(v as f32);
+            let (adapters, by_pid) = engine_loads(&unsafe { read_array(c) });
+            pids = by_pid;
+            for (luid, load) in adapters {
+                out.entry(luid).or_default().usage = load;
             }
         }
         if let Some(c) = self.gpu_ded {
@@ -243,6 +227,54 @@ fn pid_of(name: &str) -> Option<u32> {
     name.strip_prefix("pid_")?.split('_').next()?.parse().ok()
 }
 
+/// One GPU Engine instance, `pid_10028_luid_0x00000000_0x000145a3_phys_0_eng_3_engtype_copy` (lower case):
+/// the process, the adapter, and which engine of the adapter ("phys_0_eng_3_engtype_copy").
+#[derive(Debug, PartialEq)]
+struct EngineName {
+    pid: Option<u32>,
+    luid: String,
+    engine: String,
+}
+
+fn parse_engine(name: &str) -> Option<EngineName> {
+    let luid = luid_of(name)?;
+    let rest = &name[name.find("luid_")?..];
+    let engine = rest[rest.find("_phys")?..].trim_start_matches('_');
+    engine.contains("engtype_").then(|| EngineName { pid: pid_of(name), luid, engine: engine.to_string() })
+}
+
+/// Loads from the `GPU Engine` counter rows (name, %): per adapter and per process id, both 0..100.
+///
+/// Every engine of a card is its own unit that can be 100 % busy: a card has one 3D engine but several copy
+/// engines, and adding those up (what summing per engine *type* did) read 100 % when six copy engines were
+/// each 20 % busy. So: the load of an engine is what all processes together put on it (several contexts of one
+/// process, or of several, share the same instance name and add up), an adapter's load is its busiest engine
+/// (what Task Manager shows), and a process's load is the busiest engine it uses on any adapter.
+fn engine_loads(rows: &[(String, f64)]) -> (HashMap<String, f32>, HashMap<u32, f32>) {
+    let mut per_engine: HashMap<(String, String), f64> = HashMap::new();
+    let mut per_proc_engine: HashMap<(u32, String, String), f64> = HashMap::new();
+    for (name, v) in rows {
+        let Some(e) = parse_engine(&name.to_lowercase()) else { continue };
+        // A counter that failed (NaN) or went negative is no load.
+        let v = if v.is_finite() { v.max(0.0) } else { 0.0 };
+        if let Some(pid) = e.pid {
+            *per_proc_engine.entry((pid, e.luid.clone(), e.engine.clone())).or_default() += v;
+        }
+        *per_engine.entry((e.luid, e.engine)).or_default() += v;
+    }
+    let mut adapters: HashMap<String, f32> = HashMap::new();
+    for ((luid, _), v) in per_engine {
+        let a = adapters.entry(luid).or_default();
+        *a = a.max(v.min(100.0) as f32);
+    }
+    let mut pids: HashMap<u32, f32> = HashMap::new();
+    for ((pid, _, _), v) in per_proc_engine {
+        let p = pids.entry(pid).or_default();
+        *p = p.max(v.min(100.0) as f32);
+    }
+    (adapters, pids)
+}
+
 /// "0,3" -> processor 3 of group 0; "_Total" / "0,_Total" are dropped. Sorted by group, then index.
 fn core_order(rows: Vec<(String, f64)>) -> Vec<f32> {
     let mut cores: Vec<((u32, u32), f32)> = rows
@@ -270,6 +302,94 @@ mod tests {
             sys.refresh_cpu_usage();
             println!("busy {:?}  sysinfo {:.1}  per core {:?}", p.cpu_busy(), sys.global_cpu_usage(), p.core_busy());
         }
+    }
+
+    fn row(name: &str, v: f64) -> (String, f64) {
+        (name.to_string(), v)
+    }
+
+    const DGPU: &str = "luid_0x00000000_0x0fe650bb";
+    const IGPU: &str = "luid_0x00000000_0x00014fbf";
+
+    #[test]
+    fn engine_names_are_taken_apart() {
+        let e = super::parse_engine("pid_10028_luid_0x00000000_0x0fe650bb_phys_0_eng_3_engtype_copy").unwrap();
+        assert_eq!(e.pid, Some(10028));
+        assert_eq!(e.luid, DGPU);
+        assert_eq!(e.engine, "phys_0_eng_3_engtype_copy");
+        assert!(super::parse_engine("pid_0_luid_0x00000000_0x0fe650bb_phys_0_eng_0_engtype_3d").is_some());
+        // Not engine instances (or too damaged to place): left out, never a panic.
+        for n in ["", "_total", "pid_5_luid_0x1_0x2", "luid_0x1_0x2_phys_0"] {
+            assert!(super::parse_engine(n).is_none(), "{n}");
+        }
+        // No process in the name: still an engine of the adapter.
+        assert_eq!(super::parse_engine("luid_0x1_0x2_phys_0_eng_0_engtype_3d").unwrap().pid, None);
+    }
+
+    #[test]
+    fn several_copy_engines_do_not_add_up_to_a_full_card() {
+        let mut rows = vec![row(&format!("pid_10_{DGPU}_phys_0_eng_0_engtype_3D"), 12.0)];
+        for eng in [3, 4, 9, 10, 11, 12] {
+            rows.push(row(&format!("pid_10_{DGPU}_phys_0_eng_{eng}_engtype_Copy"), 20.0));
+        }
+        let (adapters, pids) = super::engine_loads(&rows);
+        assert_eq!(adapters[DGPU], 20.0, "the busiest engine, not 6 x 20 = 120");
+        assert_eq!(pids[&10], 20.0);
+    }
+
+    #[test]
+    fn processes_sharing_an_engine_add_up_and_the_busiest_engine_counts_for_each() {
+        let rows = vec![
+            row(&format!("pid_100_{DGPU}_phys_0_eng_0_engtype_3D"), 30.0),
+            row(&format!("pid_200_{DGPU}_phys_0_eng_0_engtype_3D"), 25.0),
+            row(&format!("pid_200_{DGPU}_phys_0_eng_6_engtype_VideoEncode"), 40.0),
+            // two contexts of one process on one engine come as two instances with the same name
+            row(&format!("pid_100_{DGPU}_phys_0_eng_0_engtype_3D"), 5.0),
+        ];
+        let (adapters, pids) = super::engine_loads(&rows);
+        assert_eq!(adapters[DGPU], 60.0, "3D: 30 + 25 + 5");
+        assert_eq!(pids[&100], 35.0);
+        assert_eq!(pids[&200], 40.0, "its video encoder is busier than its share of 3D");
+    }
+
+    #[test]
+    fn a_process_is_not_charged_twice_for_using_two_cards() {
+        let rows = vec![
+            row(&format!("pid_7_{DGPU}_phys_0_eng_0_engtype_3D"), 30.0),
+            row(&format!("pid_7_{IGPU}_phys_0_eng_0_engtype_3D"), 20.0),
+        ];
+        let (adapters, pids) = super::engine_loads(&rows);
+        assert_eq!((adapters[DGPU], adapters[IGPU]), (30.0, 20.0));
+        assert_eq!(pids[&7], 30.0, "not 50 %");
+    }
+
+    #[test]
+    fn work_without_a_process_is_kept_under_pid_zero() {
+        // What a WSL 2 guest running CUDA looks like on a real PC: two contexts, no process, mixed-case names.
+        let rows = vec![
+            row("pid_0_luid_0x00000000_0x0FE650BB_phys_0_eng_0_engtype_3D", 50.76),
+            row("pid_0_luid_0x00000000_0x0FE650BB_phys_0_eng_0_engtype_3D", 26.58),
+            row(&format!("pid_15144_{DGPU}_phys_0_eng_0_engtype_3D"), 0.06),
+        ];
+        let (adapters, pids) = super::engine_loads(&rows);
+        assert!((adapters[DGPU] - 77.4).abs() < 0.01, "the card is {} % busy", adapters[DGPU]);
+        assert!((pids[&0] - 77.34).abs() < 0.01);
+        assert!((pids[&15144] - 0.06).abs() < 0.001);
+    }
+
+    #[test]
+    fn bad_values_and_overload_stay_inside_0_to_100() {
+        let rows = vec![
+            row(&format!("pid_1_{DGPU}_phys_0_eng_0_engtype_3D"), f64::NAN),
+            row(&format!("pid_2_{DGPU}_phys_0_eng_0_engtype_3D"), -5.0),
+            row(&format!("pid_3_{DGPU}_phys_0_eng_0_engtype_3D"), 80.0),
+            row(&format!("pid_4_{DGPU}_phys_0_eng_0_engtype_3D"), 70.0),
+            row("garbage", 90.0),
+        ];
+        let (adapters, pids) = super::engine_loads(&rows);
+        assert_eq!(adapters[DGPU], 100.0);
+        assert_eq!((pids[&1], pids[&2], pids[&3], pids[&4]), (0.0, 0.0, 80.0, 70.0));
+        assert!(super::engine_loads(&[]).0.is_empty());
     }
 
     #[test]

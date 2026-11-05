@@ -285,6 +285,7 @@ export const dict = {
     whoMem: "Most memory at that time:",
     whoDisk: "Most disk activity at that time:",
     whoGpu: "Most GPU at that time:",
+    vmHostTip: "WSL 2 / virtual machine: what runs inside it (Linux programs, CUDA jobs) is not listed one by one in Windows, so its CPU, memory and graphics card use is counted here",
     cpuUsageTip:
       "Share of time the cores were busy. Task Manager also multiplies it by the turbo clock, so it can read higher (even 100% while some cores are idle).",
     lenAutoTip: "5 apps, more when the column has room to spare (up to 10)",
@@ -629,6 +630,7 @@ export const dict = {
     whoMem: "O sırada en çok bellek kullananlar:",
     whoDisk: "O sırada diski en çok kullananlar:",
     whoGpu: "O sırada ekran kartını en çok kullananlar:",
+    vmHostTip: "WSL 2 / sanal makine: içinde çalışanlar (Linux programları, CUDA işleri) Windows'ta tek tek görünmez; işlemci, bellek ve ekran kartı kullanımları burada toplanır",
     cpuUsageTip:
       "Çekirdeklerin meşgul olduğu sürenin payı. Görev Yöneticisi bunu turbo hızıyla da çarptığı için daha yüksek gösterebilir (bazı çekirdekler boştayken bile %100).",
     lenAutoTip: "5 uygulama; sütunda boş yer kalırsa daha fazlası (en çok 10)",

@@ -86,6 +86,8 @@
   const shown = (p: Proc) => (sort === "cpu" || sort === "gpu" ? value(p) >= 0.05 : value(p) > 0);
   const rows = $derived(list.filter(shown).slice(0, Math.min(most, base + Math.max(0, extra))));
   const clean = (n: string) => n.replace(/\.exe$/i, "");
+  /** WSL 2 / Hyper-V: the host process (vmmem) stands for everything running inside the virtual machine. */
+  const isVmHost = (n: string) => /^vmmem/i.test(n) || /^vmwp\.exe$/i.test(n);
 
   $effect(() => apps.request(rows));
 
@@ -204,7 +206,7 @@
         oncontextmenu={(e) => openMenu(e, p)}
       >
         <!-- the classic tile is narrow: the "×24" counter (it would break "chrome" in two) is only in the tooltip -->
-        <span class="name" title={`${info?.path ?? p.name}${p.count > 1 ? ` (×${p.count})` : ""}`}>
+        <span class="name" title={`${info?.path ?? p.name}${p.count > 1 ? ` (×${p.count})` : ""}${isVmHost(p.name) ? `\n${tr("vmHostTip")}` : ""}`}>
           {#if !show("icons")}
             <!-- no icon -->
           {:else if info?.icon}

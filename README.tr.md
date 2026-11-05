@@ -85,7 +85,7 @@ Hepsi yönetici hakkı olmadan, yalnızca Windows'un kendi sunduklarıyla çalı
 - **GPU hızı ve sıcaklığı:** Windows'un performans arayüzünden (Görev Yöneticisi'ndeki gibi).
 - **GPU gücü ve fan:** Yalnızca NVIDIA. Uyuyan ekran kartı sırf okumak için uyandırılmaz.
 - **Uygulama başına ağ kullanımı** yönetici hakkı ister; bu yüzden Uygulamalar kutucuğunda yoktur.
-- Uygulamalar kutucuğu hızlı bir sıralamadır, muhasebe aracı değil; değerler Görev Yöneticisi'nden farklı çıkabilir. "Görevi sonlandır", PulseTray'in kendi işlemlerine ve Windows'un kritik işlemlerine dokunmaz.
+- Uygulamalar kutucuğu hızlı bir sıralamadır, muhasebe aracı değil; değerler Görev Yöneticisi'nden farklı çıkabilir. WSL 2 ya da başka bir sanal makinenin içinde yapılan iş (örneğin ekran kartında çalışan bir CUDA işi) programlara tek tek bölünemez: işlemci, bellek ve ekran kartı yükü `vmmem` satırında toplanır. "Görevi sonlandır", PulseTray'in kendi işlemlerine ve Windows'un kritik işlemlerine dokunmaz.
 
 ## Kurulum
 

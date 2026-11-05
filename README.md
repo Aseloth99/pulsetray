@@ -85,7 +85,7 @@ All of it works without administrator rights and with what Windows itself provid
 - **GPU load and temperature** come from Windows' performance interface (like Task Manager).
 - **GPU power and fan** exist only on NVIDIA. A sleeping GPU is not woken up just to read it.
 - **Per-app network usage** needs administrator rights, so it is not in the Top Apps tile.
-- Top Apps is a quick ranking, not an accounting tool; values can differ from Task Manager. "End task" leaves PulseTray's own processes and Windows' critical processes alone.
+- Top Apps is a quick ranking, not an accounting tool; values can differ from Task Manager. Work done inside WSL 2 or another virtual machine (for example a CUDA job on the graphics card) is not visible per program: its CPU, memory and GPU load are counted on the `vmmem` row. "End task" leaves PulseTray's own processes and Windows' critical processes alone.
 
 ## Install
 

@@ -2,7 +2,6 @@
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
   import "../../app.css";
   import "../../glass.css";
   import { tr } from "$lib/tr";
@@ -118,9 +117,10 @@
 
   function onDown(e: MouseEvent) {
     if (e.button !== 0 || cfg.locked) return;
-    getCurrentWindow()
-      .startDragging()
-      .catch(() => {});
+    // Rust runs the system's move loop (see `start_move` in lib.rs); the window API's startDragging() needs a
+    // permission this window does not have, and was refused without a word.
+    e.preventDefault();
+    invoke("start_move").catch(() => {});
   }
 
   onMount(() => {
