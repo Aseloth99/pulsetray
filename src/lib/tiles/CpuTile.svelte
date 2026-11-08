@@ -3,8 +3,8 @@
   import Donut from "../Donut.svelte";
   import Spark from "../Spark.svelte";
   import Kv from "../Kv.svelte";
+  import ChartStack, { type ChartDef } from "../ChartStack.svelte";
   import { tr } from "../tr";
-  import type { Key } from "../i18n";
   import { ghz, cacheSize, percent, celsius, wattsNum } from "../format";
   import { store, type Metrics } from "../metrics.svelte";
   import { settings } from "../settings.svelte";
@@ -33,14 +33,13 @@
   const tempTip = $derived(m.cpuTempSrc === "acpi" ? tr("tempAcpi") : toolTip(m.cpuTempSrc));
   const powerTip = $derived(toolTip(m.cpuPowerSrc));
   const cpuTone = $derived(!tempBadge || temp == null ? "neutral" : temp < 80 ? "ok" : temp < 92 ? "warn" : "bad");
-  /** What the advanced chart draws (Settings > Modules > Customize). */
-  const CHARTS: Record<string, { key: string; fmt: (v: number) => string; max?: number; label: Key }> = {
-    usage: { key: "cpu.usage", fmt: percent, max: 100, label: "usage" },
-    temp: { key: "cpu.temp", fmt: celsius, label: "temperature" },
-    power: { key: "cpu.power", fmt: wattsNum, label: "cpuPower" },
-    clock: { key: "cpu.clock", fmt: ghz, label: "clock" },
-  };
-  const chart = $derived(CHARTS[caps.chart("cpu")]);
+  /** What the advanced charts can draw (Settings > Modules > Customize, or the chart's own menu). */
+  const CHARTS = $derived<Record<string, ChartDef>>({
+    usage: { series: "cpu.usage", fmt: percent, max: 100, label: tr("usage"), color: "var(--cpu)" },
+    temp: { series: "cpu.temp", fmt: celsius, label: tr("temperature"), color: "var(--cpu)" },
+    power: { series: "cpu.power", fmt: wattsNum, label: tr("cpuPower"), color: "var(--cpu)" },
+    clock: { series: "cpu.clock", fmt: ghz, label: tr("clock"), color: "var(--cpu)" },
+  });
   // More than 16 threads: two rows of bars instead of unreadably thin columns.
   const coreCols = $derived(m.cpuPerCore.length > 16 ? Math.ceil(m.cpuPerCore.length / 2) : m.cpuPerCore.length);
   // Per-core readout, like the charts: instant, and it follows the numbers while the pointer stays on a bar.
@@ -117,21 +116,7 @@
         {/if}
       </div>
     </div>
-    {#if chart}
-      <Spark
-        data={store.series[chart.key] ?? []}
-        times={store.times}
-        windowSecs={settings.historySecs}
-        color="var(--cpu)"
-        max={chart.max}
-        fmt={chart.fmt}
-        label={tr(chart.label)}
-        pick={caps.quick("cpu", "chart")}
-        height={64}
-        who="cpu"
-        detail
-      />
-    {/if}
+    <ChartStack tile="cpu" defs={CHARTS} height={64} who="cpu" />
     {#if show("perCore")}
       <div class="divider"></div>
       <span class="sub">{tr("perCore")}</span>

@@ -110,10 +110,12 @@ export const DETAIL: Record<string, DetailDef> = {
   },
   disk: {
     rows: [
+      ["tabs", "diskTabs"],
       ["drives", "drives"],
       ["active", "active"],
       ["read", "read"],
       ["write", "write"],
+      ["perDisk", "perDisk"],
       ["models", "diskModels"],
       ["health", "diskHealth"],
     ],
@@ -123,10 +125,10 @@ export const DETAIL: Record<string, DetailDef> = {
       ["none", "none"],
     ],
     charts: [
-      ["none", "none"],
       ["active", "active"],
       ["read", "read"],
       ["write", "write"],
+      ["none", "none"],
     ],
   },
   battery: {
@@ -230,13 +232,49 @@ export interface QuickPick {
   set: (id: string) => void;
   /** Tooltip of the button that opens the list. */
   tip: string;
+  /** A last entry that takes this chart away (only offered while another one stays). */
+  remove?: { label: string; run: () => void };
+}
+
+/** The charts a tile shows when nothing was chosen: the first option, unless that is "none". */
+export function defaultCharts(tile: string): string[] {
+  const first = DETAIL[tile]?.charts?.[0][0];
+  return first && first !== "none" ? [first] : [];
+}
+
+/** A chart list as the tile knows it: known ids only, no "none", each once, in the user's order. */
+export function cleanCharts(tile: string, ids: readonly unknown[]): string[] {
+  const known = new Set((DETAIL[tile]?.charts ?? []).map(([id]) => id).filter((id) => id !== "none"));
+  const out: string[] = [];
+  for (const id of ids) if (typeof id === "string" && known.has(id) && !out.includes(id)) out.push(id);
+  return out;
+}
+
+/** What to store for a chart list: `null` when it is the default (nothing to remember). */
+export function storableCharts(tile: string, ids: readonly string[]): string[] | null {
+  const list = cleanCharts(tile, ids);
+  const def = defaultCharts(tile);
+  return list.length === def.length && list.every((id, i) => id === def[i]) ? null : list;
+}
+
+/** `id` added at the end (unchanged when it is already there). */
+export const addedChart = (ids: readonly string[], id: string): string[] => (ids.includes(id) ? [...ids] : [...ids, id]);
+
+export const removedChart = (ids: readonly string[], id: string): string[] => ids.filter((x) => x !== id);
+
+/** `from` replaced by `to` in the same place; when `to` is on the list already, `from` just goes. */
+export function replacedChart(ids: readonly string[], from: string, to: string): string[] {
+  if (from === to) return [...ids];
+  if (ids.includes(to)) return removedChart(ids, from);
+  return ids.map((x) => (x === from ? to : x));
 }
 
 /** One tile's choices; `null` = the default (first option). */
 export interface Detail {
   hide: string[];
   badge: string | null;
-  chart: string | null;
+  /** The charts in the order they are shown; `null` = the default, `[]` = none at all. */
+  charts: string[] | null;
   /** Pick id -> chosen option; only choices other than the default are stored. */
   picks?: Record<string, string>;
 }
@@ -257,9 +295,16 @@ export function cleanDetails(raw: unknown): Record<string, Detail> {
       const v = (d.picks as Record<string, unknown> | undefined)?.[p.id];
       if (typeof v === "string" && v !== p.options[0][0] && p.options.some(([o]) => o === v)) picks[p.id] = v;
     }
-    const entry: Detail = { hide: [...new Set(hide)], badge: pick(d.badge, def.badges), chart: pick(d.chart, def.charts) };
+    // Before several charts were possible one was stored as `chart` ("none" = no chart); `charts` replaced it.
+    const legacy = pick((d as { chart?: unknown }).chart, def.charts);
+    const stored = Array.isArray(d.charts) ? d.charts : legacy ? (legacy === "none" ? [] : [legacy]) : null;
+    const entry: Detail = {
+      hide: [...new Set(hide)],
+      badge: pick(d.badge, def.badges),
+      charts: stored && def.charts ? storableCharts(id, stored) : null,
+    };
     if (Object.keys(picks).length) entry.picks = picks;
-    if (entry.hide.length || entry.badge || entry.chart || entry.picks) out[id] = entry;
+    if (entry.hide.length || entry.badge || entry.charts || entry.picks) out[id] = entry;
   }
   return out;
 }

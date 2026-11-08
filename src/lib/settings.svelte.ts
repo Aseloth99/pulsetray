@@ -1,5 +1,5 @@
 import type { Lang } from "./i18n";
-import { DETAIL, cleanDetails, type Detail } from "./tiledetail";
+import { DETAIL, cleanDetails, defaultCharts, storableCharts, type Detail } from "./tiledetail";
 import { detectSystemLang, normalizeLangPref, normalizeTheme, resolveLang, type LangPref, type ThemeMode } from "./prefs";
 
 export type { LangPref, ThemeMode };
@@ -401,8 +401,9 @@ class Settings {
     return this.details[tile]?.badge ?? DETAIL[tile]?.badges?.[0][0] ?? "none";
   }
 
-  chartOf(tile: TileId): string {
-    return this.details[tile]?.chart ?? DETAIL[tile]?.charts?.[0][0] ?? "none";
+  /** The charts chosen for a tile, in the order they are shown (the default when nothing was chosen). */
+  chartsOf(tile: TileId): string[] {
+    return this.details[tile]?.charts ?? defaultCharts(tile);
   }
 
   /** One of the tile's extra choices (see `DetailDef.picks`); the first option when left at the default. */
@@ -413,11 +414,16 @@ class Settings {
 
   private editDetail(tile: TileId, change: (d: Detail) => void) {
     const cur = this.details[tile];
-    const d: Detail = { hide: [...(cur?.hide ?? [])], badge: cur?.badge ?? null, chart: cur?.chart ?? null, picks: { ...cur?.picks } };
+    const d: Detail = {
+      hide: [...(cur?.hide ?? [])],
+      badge: cur?.badge ?? null,
+      charts: cur?.charts ? [...cur.charts] : null,
+      picks: { ...cur?.picks },
+    };
     change(d);
     if (!Object.keys(d.picks ?? {}).length) delete d.picks;
     const next = { ...this.details };
-    if (d.hide.length || d.badge || d.chart || d.picks) next[tile] = d;
+    if (d.hide.length || d.badge || d.charts || d.picks) next[tile] = d;
     else delete next[tile];
     this.details = next;
     this.save();
@@ -433,8 +439,9 @@ class Settings {
     this.editDetail(tile, (d) => (d.badge = badge === DETAIL[tile]?.badges?.[0][0] ? null : badge));
   }
 
-  setChart(tile: TileId, chart: string) {
-    this.editDetail(tile, (d) => (d.chart = chart === DETAIL[tile]?.charts?.[0][0] ? null : chart));
+  /** The charts of a tile, in this order; the default list is stored as "nothing chosen". */
+  setCharts(tile: TileId, ids: string[]) {
+    this.editDetail(tile, (d) => (d.charts = storableCharts(tile, ids)));
   }
 
   setPick(tile: TileId, pick: string, value: string) {
@@ -451,7 +458,7 @@ class Settings {
     this.editDetail(tile, (d) => {
       d.hide = [];
       d.badge = null;
-      d.chart = null;
+      d.charts = null;
       d.picks = {};
     });
   }

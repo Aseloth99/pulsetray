@@ -4,28 +4,57 @@
   import Kv from "../Kv.svelte";
   import { lower, tr } from "../tr";
   import type { Key } from "../i18n";
-  import Spark from "../Spark.svelte";
+  import ChartStack, { type ChartDef } from "../ChartStack.svelte";
+  import Icon from "../Icon.svelte";
+  import OptionMenu from "../OptionMenu.svelte";
   import { rate, pct, percent, size, sizePair, namesSize, celsius, trPossessive } from "../format";
+  import { MAX_TABS, ownsMount, tabLabel, fullLabel, seriesPrefix } from "../disks";
+  import type { QuickPick } from "../tiledetail";
   import { settings } from "../settings.svelte";
   import { caps } from "../caps.svelte";
   import { store, type Metrics, type DiskHealth } from "../metrics.svelte";
 
   let { m, adv, span }: { m: Metrics; adv: boolean; span: number } = $props();
-  const drives = $derived(adv ? m.disks : m.disks.slice(0, 3));
   const label = (mount: string) => mount.replace(/[\\/]+$/, "") || mount;
   const show = (row: string) => !adv || settings.shown("disk", row);
-  const chartKind = $derived(caps.chart("disk"));
-  const CHARTS: Record<string, { fmt: (v: number) => string; max?: number; bytes?: boolean }> = {
-    active: { fmt: percent, max: 100 },
-    read: { fmt: rate, bytes: true },
-    write: { fmt: rate, bytes: true },
-  };
-  // grafik adı, ayarlardaki seçenekle aynı sözcük (Etkinlik / Okuma / Yazma)
-  const chart = $derived(CHARTS[chartKind]);
+
+  // --- Several physical disks: tabs (or a list when there are many) to look at one of them, and a line per disk
+  const phys = $derived(m.physDisks ?? []);
+  const modelOfDisk = (index: number) => store.hw?.drives.find((d) => d.index === index)?.model;
+  const diskTab = (p: (typeof phys)[number]) => tabLabel(p, modelOfDisk(p.index), tr("disk"));
+  const diskFull = (p: (typeof phys)[number]) => fullLabel(p, modelOfDisk(p.index), tr("disk"));
+  const tabsOn = $derived(adv && phys.length >= 2 && settings.shown("disk", "tabs"));
+  /** The disk index being looked at; `null` = all together. A disk that is gone shows everything again. */
+  let chosen = $state<number | null>(null);
+  const sel = $derived(tabsOn && chosen != null ? phys.find((p) => p.index === chosen) : undefined);
+  const diskPick = $derived<QuickPick>({
+    options: [{ id: "all", label: tr("allDisks") }, ...phys.map((p) => ({ id: String(p.index), label: diskFull(p) }))],
+    value: sel ? String(sel.index) : "all",
+    set: (id) => (chosen = id === "all" ? null : Number(id)),
+    tip: tr("pickDiskTip"),
+  });
+  const all = $derived(adv ? m.disks : m.disks.slice(0, 3));
+  /** The volumes shown: those of the chosen disk, or all. */
+  const drives = $derived(sel ? all.filter((d) => ownsMount(sel, d.mount)) : all);
+  /** The numbers shown: the chosen disk's, or the sum of all. */
+  const cur = $derived(sel ?? { active: m.diskActive, read: m.diskRead, write: m.diskWrite });
+  /** With several disks the numbers of "all" are sums: say so on hover. */
+  const sum = $derived(!sel && phys.length >= 2 ? tr("diskTotalTip") : undefined);
+  const models = $derived((store.hw?.drives ?? []).filter((p) => !sel || p.index === sel.index));
+  // chart names are the same words as the options in Settings (Active / Read / Write)
+  const CHARTS = $derived.by<Record<string, ChartDef>>(() => {
+    const sp = seriesPrefix(sel);
+    const color = "var(--disk)";
+    return {
+      active: { series: `${sp}active`, fmt: percent, max: 100, label: tr("active"), color },
+      read: { series: `${sp}read`, fmt: rate, bytes: true, floor: 1024, label: tr("read"), color },
+      write: { series: `${sp}write`, fmt: rate, bytes: true, floor: 1024, label: tr("write"), color },
+    };
+  });
   /** A nearly full drive turns its bar red (Windows itself warns at 90 %). */
   const FULL_PCT = 90;
   const kvShown = $derived(
-    show("active") || show("read") || show("write") || (show("models") && (store.hw?.drives.length ?? 0) > 0),
+    show("active") || show("read") || show("write") || (show("models") && models.length > 0),
   );
 
   // --- Disk sağlığı (NVMe sağlık kaydı + sıcaklık; diskhealth.rs) ---
@@ -69,11 +98,22 @@
     if (h.warnC != null && h.critC != null) lines.push(fill("tempLimits", celsius(h.warnC), celsius(h.critC)));
     return lines.join("\n");
   }
+  const shownHealth = $derived(sel ? health.filter((h) => h.index === sel.index) : health);
+  /** The badge follows what the tile shows: all disks, or the chosen one. */
   const hottest = $derived(
-    health.filter((h) => h.tempC != null).sort((a, b) => (b.tempC as number) - (a.tempC as number))[0],
+    shownHealth.filter((h) => h.tempC != null).sort((a, b) => (b.tempC as number) - (a.tempC as number))[0],
   );
   const badgeKind = $derived(caps.badge("disk"));
 </script>
+
+{#snippet pdRow(p: (typeof phys)[number])}
+  <span class="pdh">
+    <span class="pdn"><b>{p.letters || diskTab(p)}</b>{#if p.letters && modelOfDisk(p.index)}<em>{modelOfDisk(p.index)}</em>{/if}</span>
+    <span class="pda">{percent(p.active)}</span>
+  </span>
+  <Bar value={p.active} color="var(--disk)" height={5} />
+  <span class="pdr">{tr("read")} {rate(p.read)} · {tr("write")} {rate(p.write)}</span>
+{/snippet}
 
 <Tile
   title={tr("disk")}
@@ -83,20 +123,41 @@
   badge={!adv
     ? undefined
     : badgeKind === "active"
-      ? `${m.diskActive.toFixed(0)}% ${lower(tr("active"))}`
+      ? `${cur.active.toFixed(0)}% ${lower(tr("active"))}`
       : badgeKind === "temp" && hottest
         ? celsius(hottest.tempC as number)
         : undefined}
   badgeTone={badgeKind === "temp" && hottest
     ? ((tempTone(hottest) || "ok") as "ok" | "warn" | "bad")
-    : m.diskActive > 90
+    : cur.active > 90
       ? "bad"
-      : m.diskActive > 70
+      : cur.active > 70
         ? "warn"
         : "neutral"}
   badgeTip={badgeKind === "temp" && hottest ? `${tr("driveTemp")} · ${modelOf(hottest)}` : undefined}
   badgePick={caps.quick("disk", "badge")}
 >
+  {#if tabsOn}
+    {#if phys.length <= MAX_TABS}
+      <div class="seg" role="group" aria-label={tr("pickDiskTip")}>
+        <button class:on={!sel} title={tr("allDisksTip")} onclick={() => (chosen = null)}>{tr("allDisks")}</button>
+        {#each phys as p (p.index)}
+          <button class:on={sel?.index === p.index} title={diskFull(p)} onclick={() => (chosen = p.index)}>
+            {diskTab(p)}
+          </button>
+        {/each}
+      </div>
+    {:else}
+      <OptionMenu pick={diskPick} align="start">
+        {#snippet trigger({ toggle, open })}
+          <button type="button" class="drop" aria-haspopup="menu" aria-expanded={open} title={diskPick.tip} onclick={toggle}>
+            <span>{sel ? diskFull(sel) : tr("allDisks")}</span><Icon name="down" size={10} />
+          </button>
+        {/snippet}
+      </OptionMenu>
+    {/if}
+  {/if}
+
   {#each show("drives") ? drives : [] as d, i (i)}
     <div class="bar-row">
       <div class="bar-head">
@@ -113,31 +174,15 @@
   {/each}
 
   {#if adv}
-    {#if chart}
-      <Spark
-        data={store.series[`disk.${chartKind}`] ?? []}
-        times={store.times}
-        windowSecs={settings.historySecs}
-        color="var(--disk)"
-        max={chart.max}
-        fmt={chart.fmt}
-        bytes={chart.bytes}
-        floor={chart.bytes ? 1024 : 1}
-        label={tr(chartKind as Key)}
-        pick={caps.quick("disk", "chart")}
-        height={56}
-        who="disk"
-        detail
-      />
-    {/if}
+    <ChartStack tile="disk" defs={CHARTS} height={56} who={sel ? undefined : "disk"} />
     {#if kvShown}
       <div class="divider"></div>
       <div class="kv">
-        {#if show("active")}<Kv label={tr("active")} value={percent(m.diskActive)} />{/if}
-        {#if show("read")}<Kv label={tr("read")} value={rate(m.diskRead)} />{/if}
-        {#if show("write")}<Kv label={tr("write")} value={rate(m.diskWrite)} />{/if}
+        {#if show("active")}<Kv label={tr("active")} value={percent(cur.active)} title={sum} />{/if}
+        {#if show("read")}<Kv label={tr("read")} value={rate(cur.read)} title={sum} />{/if}
+        {#if show("write")}<Kv label={tr("write")} value={rate(cur.write)} title={sum} />{/if}
         {#if show("models")}
-          {#each store.hw?.drives ?? [] as p, i (i)}
+          {#each models as p, i (i)}
             <Kv
               label={p.media || tr("drives")}
               value={[p.model, namesSize(p.model) ? "" : size(p.size), p.bus].filter(Boolean).join(" · ")}
@@ -147,10 +192,23 @@
         {/if}
       </div>
     {/if}
-    {#if show("health") && health.length}
+    {#if show("perDisk") && !sel && phys.length >= 2}
+      <div class="divider"></div>
+      <span class="sub">{tr("perDisk")}</span>
+      {#each phys as p (p.index)}
+        {#if tabsOn}
+          <button type="button" class="pd" title={`${diskFull(p)}\n${tr("diskOpenTip")}`} onclick={() => (chosen = p.index)}>
+            {@render pdRow(p)}
+          </button>
+        {:else}
+          <div class="pd" title={diskFull(p)}>{@render pdRow(p)}</div>
+        {/if}
+      {/each}
+    {/if}
+    {#if show("health") && shownHealth.length}
       <div class="divider"></div>
       <span class="sub">{tr("diskHealth")}</span>
-      {#each health as h (h.index)}
+      {#each shownHealth as h (h.index)}
         <div class="health" title={details(h)}>
           <div class="hrow">
             <span class="hname">{modelOf(h)}</span>
@@ -172,6 +230,110 @@
 </Tile>
 
 <style>
+  .seg {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 3px;
+    border-radius: 11px;
+    box-shadow: var(--inset-sm);
+    gap: 2px;
+    align-self: flex-start;
+    max-width: 100%;
+  }
+  .seg button {
+    padding: 3px 9px;
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .seg button.on {
+    box-shadow: var(--raised-sm);
+    color: var(--text);
+    font-weight: 600;
+  }
+  /* many disks: one button that opens the list (OptionMenu) */
+  .drop {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 10px;
+    box-shadow: var(--raised-sm);
+    cursor: pointer;
+  }
+  .drop span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .drop:hover,
+  .drop[aria-expanded="true"] {
+    box-shadow: var(--inset-sm);
+  }
+  /* one line per physical disk: name and load, a bar, then what it reads and writes */
+  .pd {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    padding: 2px 0;
+    border-radius: 8px;
+  }
+  button.pd {
+    cursor: pointer;
+  }
+  button.pd:hover,
+  button.pd:focus-visible {
+    outline: none;
+    box-shadow: var(--inset-sm);
+  }
+  .pdh {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 11.5px;
+    min-width: 0;
+  }
+  .pdn {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pdn b {
+    font-weight: 650;
+  }
+  .pda {
+    flex: none;
+    font-weight: 600;
+  }
+  .pdr {
+    font-size: 10.5px;
+    color: var(--muted);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .bar-row {
     display: flex;
     flex-direction: column;

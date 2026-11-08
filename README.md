@@ -43,7 +43,7 @@ PulseTray sits in the tray and costs next to nothing until you open it. A click 
 | Memory | RAM and virtual memory (page file) rings | available, cached, committed memory, memory type, speed, modules, maker |
 | GPU | load, memory | core and memory clock, temperature, fan, power (NVIDIA), one tab per GPU |
 | Network | speed, today's total | adapter, IP address, link speed, today / session / since-boot table |
-| Disk | space used (red above 90 %), read and write speed | active time, all drives, physical disk models, drive health |
+| Disk | space used (red above 90 %), read and write speed | active time, all drives, activity, read and write of every physical disk (tabs, or a list when there are many), physical disk models, drive health |
 | Battery | charge, power, time to full or empty | health, remaining energy (Wh), voltage, cycle count, power and charge charts; the clock icon in the header opens the battery history |
 | Latency | a 3-minute or unlimited test | per-target average, minimum, maximum, jitter, loss, charts, continuous measurement |
 | Wi-Fi | signal, link speed (when not connected: state and nearby networks) | network name, standard (Wi-Fi 5, 6, 7); when not connected: adapter, number of networks, strongest network |
@@ -53,8 +53,8 @@ PulseTray sits in the tray and costs next to nothing until you open it. A click 
 ### More to know
 
 - **Battery history** comes from Windows' own battery report (`powercfg /batteryreport /xml`, no administrator needed): how the battery's health developed since the first record, screen-on time on battery and on AC for up to the last 14 days (Windows keeps older days per week, so there can be fewer days; the header says how many), and the charge level of the last days.
-- **Quick switch:** in Advanced view, click a tile's header badge or the chart's name (with the small arrow) to pick another value or chart right there, e.g. CPU temperature or clock instead of usage. It is the same choice as below.
-- **Customize** (Settings > Modules, slider icon): in Advanced view, choose each tile's rows, header badge and chart. Top Apps also has a start tab, list length, tabs, icons and the ×n counter; Latency has chart, summary values and the IP row. Options your PC cannot measure are greyed out with the reason underneath; a tile that was set to one falls back to the first measurable option.
+- **Quick switch:** in Advanced view, click a tile's header badge or the chart's name (with the small arrow) to pick another value or chart right there, e.g. CPU temperature or clock instead of usage. "Add chart" under a tile's charts puts another one below (CPU, Memory, GPU and Disk can show all of theirs at once), and a chart's menu can take it away again. It is the same choice as below. Every chart's header shows the average and the peak of the time it covers.
+- **Customize** (Settings > Modules, slider icon): in Advanced view, choose each tile's rows, header badge and charts (as many as you like). Top Apps also has a start tab, list length, tabs, icons and the ×n counter; Latency has chart, summary values and the IP row. Options your PC cannot measure are greyed out with the reason underneath; a tile that was set to one falls back to the first measurable option.
 - **Pin the panel:** it stays open, can be dragged and resized, and remembers its size separately for Classic and Advanced.
 - **Tiles** can be hidden and reordered, separately for each view. On a fresh start Latency and Wi-Fi are off and System is on. PulseTray registers itself to start at login on the first run; Settings > General > **Start at Login** turns that off, and it is not switched on again afterwards.
 - **Charts:** Advanced view looks back 3 minutes, 15 minutes or 1 hour; history is recorded while the panel is closed. The axis label says what a chart shows; hovering shows the value at that moment.

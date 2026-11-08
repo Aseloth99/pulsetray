@@ -2,6 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { settings } from "./settings.svelte";
 
+export type { PhysDisk } from "./disks";
+import type { PhysDisk } from "./disks";
+
 export interface DiskInfo {
   name: string;
   mount: string;
@@ -186,6 +189,8 @@ export interface Metrics {
   diskWrite: number;
   diskActive: number;
   disks: DiskInfo[];
+  /** Activity of every physical drive (pdh.rs); empty where Windows has no such counters. */
+  physDisks?: PhysDisk[];
   /** Temperature / wear per physical drive (diskhealth.rs); empty when no drive reports it. */
   diskHealth?: DiskHealth[];
   gpus: Gpu[];
@@ -313,6 +318,11 @@ class Store {
     put("disk.active", m.diskActive);
     put("disk.read", m.diskRead);
     put("disk.write", m.diskWrite);
+    for (const p of m.physDisks ?? []) {
+      put(`disk.${p.index}.active`, p.active);
+      put(`disk.${p.index}.read`, p.read);
+      put(`disk.${p.index}.write`, p.write);
+    }
     for (const g of m.gpus) {
       put(`gpu.${g.luid}.usage`, g.usage);
       put(`gpu.${g.luid}.temp`, g.sensors.tempC);

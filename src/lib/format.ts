@@ -152,6 +152,18 @@ export function mmss(secs: number): string {
 }
 
 // Chart readouts (values as the store keeps them).
+/** Mean of the numbers in a series; `null` entries (no reading) don't count. `null` when there is nothing to average. */
+export function mean(values: readonly (number | null)[]): number | null {
+  let sum = 0;
+  let n = 0;
+  for (const v of values) {
+    if (v == null || !Number.isFinite(v)) continue;
+    sum += v;
+    n++;
+  }
+  return n ? sum / n : null;
+}
+
 export const percent = (v: number): string => `${v.toFixed(0)}%`;
 export const celsius = (v: number): string => `${v.toFixed(0)} °C`;
 export const wattsNum = (w: number): string => `${w.toFixed(w < 10 ? 1 : 0)} W`;

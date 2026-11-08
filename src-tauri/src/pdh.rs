@@ -2,6 +2,7 @@
 //! Windows Performance Data Helper (PDH) counters: per-adapter GPU load / memory and disk active time.
 //! These are the same counters Task Manager uses, and they work without admin rights.
 
+use serde::Serialize;
 use std::collections::HashMap;
 use windows::core::{w, PCWSTR};
 use windows::Win32::System::Performance::{
@@ -20,6 +21,10 @@ pub struct Pdh {
     gpu_ded: Option<PDH_HCOUNTER>,
     gpu_shared: Option<PDH_HCOUNTER>,
     disk: Option<PDH_HCOUNTER>,
+    /// The same per physical disk ("0 C:", "1 D: E:"), and what each reads and writes per second.
+    phys_idle: Option<PDH_HCOUNTER>,
+    phys_read: Option<PDH_HCOUNTER>,
+    phys_write: Option<PDH_HCOUNTER>,
     cpu_perf: Option<PDH_HCOUNTER>,
     cpu_base: Option<PDH_HCOUNTER>,
     /// "% Processor Time": the share of time the processors were busy. Deliberately not Task Manager's
@@ -68,6 +73,9 @@ impl Pdh {
                 // "% Disk Time" is queue-length based and goes far above 100 on SSD / NVMe; Task Manager's
                 // "Active time" is 100 minus "% Idle Time".
                 disk: add(w!("\\PhysicalDisk(_Total)\\% Idle Time")),
+                phys_idle: add(w!("\\PhysicalDisk(*)\\% Idle Time")),
+                phys_read: add(w!("\\PhysicalDisk(*)\\Disk Read Bytes/sec")),
+                phys_write: add(w!("\\PhysicalDisk(*)\\Disk Write Bytes/sec")),
                 cpu_perf: add(w!("\\Processor Information(_Total)\\% Processor Performance")),
                 cpu_base: add(w!("\\Processor Information(_Total)\\Processor Frequency")),
                 cpu_busy: add(w!("\\Processor Information(_Total)\\% Processor Time")),
@@ -170,6 +178,16 @@ impl Pdh {
         }
     }
 
+    /// Active time, read and write speed of every physical disk, in disk-number order; empty where Windows has
+    /// no such counters.
+    pub fn physical_disks(&self) -> Vec<PhysDisk> {
+        let (Some(idle), Some(read), Some(write)) = (self.phys_idle, self.phys_read, self.phys_write) else {
+            return Vec::new();
+        };
+        let (idle, read, write) = unsafe { (read_array(idle), read_array(read), read_array(write)) };
+        phys_disks(&idle, &read, &write)
+    }
+
     /// Per-adapter GPU counters keyed by LUID string, e.g. `luid_0x00000000_0x000145a3`.
     /// Also returns the load per process id (its busiest engine), for the "top apps" list. Work Windows cannot
     /// tie to a process (a WSL 2 / Hyper-V guest using the card) is under pid 0.
@@ -212,6 +230,55 @@ impl Drop for Pdh {
             PdhCloseQuery(self.gpu_query);
         }
     }
+}
+
+/// One physical disk as the UI shows it.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PhysDisk {
+    /// The Windows disk number ("Disk 0").
+    pub index: u32,
+    /// The drive letters on it, "C:" or "D: E:"; empty for a disk without a lettered volume.
+    pub letters: String,
+    /// Task Manager's "active time": 100 minus the idle time, 0..100.
+    pub active: f32,
+    /// Bytes per second.
+    pub read: f64,
+    pub write: f64,
+}
+
+/// A `PhysicalDisk` instance name: `0 C:` -> (0, "C:"), `1 D: E:` -> (1, "D: E:"), `2` -> (2, ""). The `_Total` row
+/// and anything that doesn't start with a disk number is not a disk.
+fn phys_instance(name: &str) -> Option<(u32, String)> {
+    let mut parts = name.split_whitespace();
+    let index = parts.next()?.parse::<u32>().ok()?;
+    Some((index, parts.collect::<Vec<_>>().join(" ")))
+}
+
+/// The disks from the three counters' rows (instance name, value). Every disk has an idle-time row, so those name
+/// the disks; the speeds are looked up by the same instance name (0 when a counter has no row for it).
+fn phys_disks(idle: &[(String, f64)], read: &[(String, f64)], write: &[(String, f64)]) -> Vec<PhysDisk> {
+    let speed = |rows: &[(String, f64)], name: &str| {
+        rows.iter().find(|(n, _)| n == name).map_or(0.0, |(_, v)| if v.is_finite() { v.max(0.0) } else { 0.0 })
+    };
+    let mut out: Vec<PhysDisk> = Vec::new();
+    for (name, idle_pct) in idle {
+        let Some((index, letters)) = phys_instance(name) else { continue };
+        if out.iter().any(|d| d.index == index) {
+            continue;
+        }
+        // A counter that failed (NaN) counts as an idle disk; the idle time can read a little over 100.
+        let idle_pct = if idle_pct.is_finite() { *idle_pct } else { 100.0 };
+        out.push(PhysDisk {
+            index,
+            letters,
+            active: (100.0 - idle_pct).clamp(0.0, 100.0) as f32,
+            read: speed(read, name),
+            write: speed(write, name),
+        });
+    }
+    out.sort_by_key(|d| d.index);
+    out
 }
 
 /// `pid_1_luid_0x00000000_0x000145a3_phys_0_eng_0_...` or `luid_0x..._0x..._phys_0` -> `luid_0x00000000_0x000145a3`
@@ -306,6 +373,74 @@ mod tests {
 
     fn row(name: &str, v: f64) -> (String, f64) {
         (name.to_string(), v)
+    }
+
+    #[test]
+    fn disk_instance_names_are_taken_apart() {
+        assert_eq!(super::phys_instance("0 C:"), Some((0, "C:".to_string())));
+        assert_eq!(super::phys_instance("1 D: E:"), Some((1, "D: E:".to_string())));
+        assert_eq!(super::phys_instance("2"), Some((2, String::new())));
+        assert_eq!(super::phys_instance("12 F: G: H:"), Some((12, "F: G: H:".to_string())));
+        assert_eq!(super::phys_instance("_Total"), None);
+        assert_eq!(super::phys_instance(""), None);
+        assert_eq!(super::phys_instance("C: 0"), None);
+    }
+
+    #[test]
+    fn every_disk_gets_its_own_load_and_speeds() {
+        let idle = [row("0 C:", 80.0), row("1 D: E:", 99.5), row("_Total", 90.0)];
+        let read = [row("1 D: E:", 2.0e6), row("0 C:", 1.0e6), row("_Total", 3.0e6)];
+        let write = [row("0 C:", 500.0), row("1 D: E:", 0.0), row("_Total", 500.0)];
+        let d = super::phys_disks(&idle, &read, &write);
+        assert_eq!(d.len(), 2, "the total is not a disk");
+        assert_eq!((d[0].index, d[0].letters.as_str()), (0, "C:"));
+        assert!((d[0].active - 20.0).abs() < 1e-4);
+        assert_eq!((d[0].read, d[0].write), (1.0e6, 500.0));
+        assert_eq!((d[1].index, d[1].letters.as_str()), (1, "D: E:"));
+        assert!((d[1].active - 0.5).abs() < 1e-3);
+        assert_eq!((d[1].read, d[1].write), (2.0e6, 0.0), "rows are matched by name, not by position");
+    }
+
+    #[test]
+    fn disks_come_out_in_disk_number_order() {
+        let idle = [row("10 K:", 100.0), row("2 E:", 100.0), row("0 C:", 100.0), row("1 D:", 100.0)];
+        let order: Vec<u32> = super::phys_disks(&idle, &[], &[]).iter().map(|d| d.index).collect();
+        assert_eq!(order, [0, 1, 2, 10], "numeric order: 10 comes after 2");
+    }
+
+    #[test]
+    fn missing_or_bad_counter_values_do_not_break_a_disk() {
+        // No read / write rows at all, an idle time over 100, a failed (NaN) one, a negative speed.
+        let idle = [row("0 C:", 100.4), row("1 D:", f64::NAN), row("2 E:", 50.0)];
+        let read = [row("2 E:", -5.0)];
+        let write = [row("2 E:", f64::INFINITY)];
+        let d = super::phys_disks(&idle, &read, &write);
+        assert_eq!((d[0].active, d[0].read, d[0].write), (0.0, 0.0, 0.0));
+        assert_eq!(d[1].active, 0.0, "a failed idle reading is an idle disk, not a busy one");
+        assert_eq!((d[2].active, d[2].read, d[2].write), (50.0, 0.0, 0.0));
+        let busy = super::phys_disks(&[row("0 C:", -3.0)], &[], &[]);
+        assert_eq!(busy[0].active, 100.0, "never above 100");
+    }
+
+    #[test]
+    fn one_disk_is_listed_once_even_if_a_counter_repeats_it() {
+        let idle = [row("0 C:", 90.0), row("0 C:", 10.0)];
+        assert_eq!(super::phys_disks(&idle, &[], &[]).len(), 1);
+        assert!(super::phys_disks(&[], &[], &[]).is_empty());
+    }
+
+    #[test]
+    #[ignore = "reads this machine's counters: run with --ignored --nocapture"]
+    fn live_physical_disks() {
+        let p = super::Pdh::new().unwrap();
+        for _ in 0..3 {
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            p.collect();
+            let d = p.physical_disks();
+            println!("{} disks, total active {:.1}: {:#?}", d.len(), p.disk_active(), d);
+            assert!(!d.is_empty(), "this PC has no PhysicalDisk counters");
+            assert!(d.iter().all(|x| (0.0..=100.0).contains(&x.active) && x.read >= 0.0 && x.write >= 0.0));
+        }
     }
 
     const DGPU: &str = "luid_0x00000000_0x0fe650bb";

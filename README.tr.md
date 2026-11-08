@@ -31,8 +31,8 @@ PulseTray tepside durur ve siz açana kadar neredeyse hiçbir şeye mal olmaz. S
 - **Mini Gösterge:** masaüstünde her zaman üstte duran küçük bir kart (FPS, CPU, GPU, RAM, ağ, disk). Odak çalmaz, tam ekran uygulamalarda gizlenir.
 - **İsteğe bağlı uyarılar**, Windows bildirimi olarak (disk dolmak üzere, bellek sınıra yaklaştı, yüksek sıcaklık, disk sağlığı kötüleşti, bir uygulama işlemciyi yiyor).
 - **Tepsi ekstraları:** tepsi simgesi olarak canlı işlemci, ekran kartı ya da RAM yüzdesi, canlı değerlerle ipucu ve temaya uyan sağ tık menüsü.
-- **Hızlı geçiş:** Gelişmiş görünümde kutucuğun başlık rozetine ya da grafiğin adına (yanındaki küçük okla) tıklayarak değeri veya grafiği oradan değiştirme; örneğin işlemcide kullanım yerine sıcaklık ya da hız. Aşağıdaki seçimle aynıdır.
-- **Kutucuk başına özelleştirme:** Gelişmiş görünümde her kutucuk için gizleme, sıralama, satırları, başlık rozetini ve grafiği seçme.
+- **Hızlı geçiş:** Gelişmiş görünümde kutucuğun başlık rozetine ya da grafiğin adına (yanındaki küçük okla) tıklayarak değeri veya grafiği oradan değiştirme; örneğin işlemcide kullanım yerine sıcaklık ya da hız. Grafiklerin altındaki "Grafik ekle" ile bir grafik daha eklenir (işlemci, bellek, ekran kartı ve disk hepsini aynı anda gösterebilir), grafiğin menüsünden de kaldırılır. Aşağıdaki seçimle aynıdır. Her grafiğin başlığında kapsadığı sürenin ortalaması ve tepe değeri yazar.
+- **Kutucuk başına özelleştirme:** Gelişmiş görünümde her kutucuk için gizleme, sıralama, satırları, başlık rozetini ve grafikleri seçme.
 - **İki görsel tasarım** (Neumorfik ve Cam), açık, koyu ya da sistem teması; Türkçe ve İngilizce.
 - **Kendini günceller:** günlük denetim, ilerlemeli indirme, SHA-256 doğrulaması, sessiz yeniden başlatma; yeni sürüm açılışta sürekli düşerse otomatik geri dönüş.
 
@@ -44,7 +44,7 @@ PulseTray tepside durur ve siz açana kadar neredeyse hiçbir şeye mal olmaz. S
 | Bellek | RAM ve sanal bellek (sayfa dosyası) halkaları | kullanılabilir, önbellek, ayrılan bellek, bellek türü, hızı, modülleri, üreticisi |
 | Ekran kartı | yük, bellek | çekirdek ve bellek hızı, sıcaklık, fan, güç (NVIDIA), her ekran kartı için ayrı sekme |
 | Ağ | hız, bugünkü toplam | bağdaştırıcı, IP, bağlantı hızı, bugün / oturum / açılıştan beri tablosu |
-| Disk | doluluk (%90 üstü kırmızı), okuma ve yazma hızı | etkinlik süresi, tüm sürücüler, fiziksel disk modelleri, disk sağlığı |
+| Disk | doluluk (%90 üstü kırmızı), okuma ve yazma hızı | etkinlik süresi, tüm sürücüler, her fiziksel diskin etkinliği, okuması ve yazması (sekmeler; çok diskte liste), fiziksel disk modelleri, disk sağlığı |
 | Pil | şarj, güç, dolma ya da bitme süresi | sağlık, kalan enerji (Wh), voltaj, döngü sayısı, güç ve şarj grafikleri; başlıktaki saat simgesi pil geçmişini açar |
 | Gecikme | 3 dakikalık ya da süresiz test | hedef başına ortalama, en az, en çok, sapma, kayıp, grafikler, sürekli ölçüm |
 | Wi-Fi | sinyal, hız (bağlı değilken: durum ve çevredeki ağlar) | ağ adı, standart (Wi-Fi 5, 6, 7); bağlı değilken bağdaştırıcı, ağ sayısı, en güçlü ağ |
@@ -54,7 +54,7 @@ PulseTray tepside durur ve siz açana kadar neredeyse hiçbir şeye mal olmaz. S
 ### Bilmeniz gerekenler
 
 - **Pil geçmişi**, Windows'un kendi pil raporundan gelir (`powercfg /batteryreport /xml`, yönetici gerekmez): sağlığın ilk kayıttan bugüne seyri, son 14 güne kadar her günün ekran açık süresi (pilde ve prizde; Windows eski günleri haftalık tuttuğu için bazen daha az gün olur, başlık kaç gün olduğunu yazar) ve son günlerin şarj seviyesi.
-- **Özelleştir** (Ayarlar > Modüller, kaydırıcı simgesi): Gelişmiş görünümde her kutucuğun satırlarını, başlık rozetini ve grafiğini seçersiniz. Uygulamalar'da ayrıca açılış sekmesi, liste uzunluğu, sekmeler, simgeler ve ×n sayacı; Gecikme'de grafik, özet değerler ve IP satırı vardır. Bilgisayarınızın ölçemediği seçenekler soluktur ve seçilemez, altında nedeni yazar; daha önce seçilmişse kutucuk ilk ölçülebilen seçeneğe döner.
+- **Özelleştir** (Ayarlar > Modüller, kaydırıcı simgesi): Gelişmiş görünümde her kutucuğun satırlarını, başlık rozetini ve grafiklerini (istediğiniz kadar) seçersiniz. Uygulamalar'da ayrıca açılış sekmesi, liste uzunluğu, sekmeler, simgeler ve ×n sayacı; Gecikme'de grafik, özet değerler ve IP satırı vardır. Bilgisayarınızın ölçemediği seçenekler soluktur ve seçilemez, altında nedeni yazar; daha önce seçilmişse kutucuk ilk ölçülebilen seçeneğe döner.
 - **Paneli iğneleyin:** açık kalır, sürüklenir, yeniden boyutlanır; boyutunu Klasik ve Gelişmiş için ayrı hatırlar.
 - **Kutucukları** gizleyebilir ve sıralayabilirsiniz; Klasik ve Gelişmiş görünüm için ayrı ayrı. İlk açılışta Gecikme ve Wi-Fi kapalı, Sistem açık gelir. PulseTray ilk çalışmada açılışta başlayacak şekilde kurulur; Ayarlar > Genel > **Açılışta Başlat** bunu kapatır ve sonradan kendiliğinden açılmaz.
 - **Grafikler:** Gelişmiş modda 3 dakika, 15 dakika ya da 1 saat geriye gider; panel kapalıyken de kaydedilir. Grafiğin ne gösterdiği ölçeğin yanında yazar; üzerine gelince o anki değer çıkar.

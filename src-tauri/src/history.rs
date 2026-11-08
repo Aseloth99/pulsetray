@@ -61,6 +61,15 @@ struct GpuPoint {
     power: Option<f32>,
 }
 
+/// One physical disk in one sample (the UI's "disk.<n>.active" / ".read" / ".write").
+#[derive(Clone)]
+struct DiskPoint {
+    index: u32,
+    active: f32,
+    read: f64,
+    write: f64,
+}
+
 #[derive(Clone)]
 struct Point {
     t: u64,
@@ -75,6 +84,7 @@ struct Point {
     disk_active: f32,
     disk_read: f64,
     disk_write: f64,
+    phys: Vec<DiskPoint>,
     bat_power: Option<f32>,
     gpus: Vec<GpuPoint>,
 }
@@ -113,6 +123,11 @@ impl Point {
             disk_active: m.disk_active,
             disk_read: m.disk_read,
             disk_write: m.disk_write,
+            phys: m
+                .phys_disks
+                .iter()
+                .map(|d| DiskPoint { index: d.index, active: d.active, read: d.read, write: d.write })
+                .collect(),
             bat_power: m
                 .battery
                 .detail
@@ -274,6 +289,25 @@ impl History {
         col("disk.read", &|p| Some(p.disk_read.round()));
         col("disk.write", &|p| Some(p.disk_write.round()));
         col("bat.power", &|p| p.bat_power.map(|v| r2(v as f64)));
+        // Every physical disk that was measured in the window, under its disk number.
+        let mut disks: Vec<u32> = Vec::new();
+        for p in pts() {
+            for d in &p.phys {
+                if !disks.contains(&d.index) {
+                    disks.push(d.index);
+                }
+            }
+        }
+        disks.sort_unstable();
+        for idx in disks {
+            let one = |p: &Point| p.phys.iter().find(|d| d.index == idx).cloned();
+            let mut put = |metric: &str, f: &dyn Fn(&DiskPoint) -> f64| {
+                series.insert(format!("disk.{idx}.{metric}"), pts().map(|p| one(p).map(|d| f(&d))).collect());
+            };
+            put("active", &|d| r2(d.active as f64));
+            put("read", &|d| d.read.round());
+            put("write", &|d| d.write.round());
+        }
         let mut seen: Vec<u8> = Vec::new();
         for p in pts() {
             for g in &p.gpus {
@@ -318,6 +352,54 @@ mod tests {
 
     fn app(name: &str, cpu: f32, mem: u64) -> ProcInfo {
         ProcInfo { name: name.into(), cpu, mem, ..Default::default() }
+    }
+
+    fn disk(index: u32, letters: &str, active: f32, read: f64, write: f64) -> crate::pdh::PhysDisk {
+        crate::pdh::PhysDisk { index, letters: letters.into(), active, read, write }
+    }
+
+    #[test]
+    fn every_physical_disk_has_its_own_series_under_its_disk_number() {
+        let mut h = History::default();
+        for i in 0..5u64 {
+            let mut m = metrics(1_000_000 + i * 1000, 1.0, false);
+            m.phys_disks = vec![disk(0, "C:", 10.0 + i as f32, 1.0e6, 2.0e3), disk(2, "E:", 0.4, 0.0, 9.5e6)];
+            h.push(&m);
+        }
+        let s = h.snapshot(None, 180).series;
+        assert_eq!(s["disk.0.active"], [Some(10.0), Some(11.0), Some(12.0), Some(13.0), Some(14.0)]);
+        assert_eq!(s["disk.0.read"], [Some(1.0e6); 5]);
+        assert_eq!(s["disk.0.write"], [Some(2.0e3); 5]);
+        assert_eq!(s["disk.2.active"], [Some(0.4); 5]);
+        assert_eq!(s["disk.2.write"], [Some(9.5e6); 5]);
+        assert!(!s.contains_key("disk.1.active"), "a disk that was never there has no series");
+        assert_eq!(s["disk.active"].len(), 5, "the all-disks series stay as they were");
+    }
+
+    #[test]
+    fn a_disk_that_appears_later_is_empty_before_and_series_stay_as_long_as_the_times() {
+        let mut h = History::default();
+        for i in 0..6u64 {
+            let mut m = metrics(1_000_000 + i * 1000, 1.0, false);
+            if i >= 3 {
+                m.phys_disks = vec![disk(1, "D:", 50.0, 3.0e6, 0.0)];
+            }
+            h.push(&m);
+        }
+        let d = h.snapshot(None, 180);
+        assert_eq!(d.series["disk.1.active"], [None, None, None, Some(50.0), Some(50.0), Some(50.0)]);
+        assert!(d.series.values().all(|v| v.len() == d.times.len()));
+        // only the newest samples: the series is as long as that
+        let d = h.snapshot(Some(1_000_000 + 3000), 180);
+        assert_eq!(d.series["disk.1.read"], [Some(3.0e6), Some(3.0e6)]);
+    }
+
+    #[test]
+    fn without_per_disk_counters_there_are_no_disk_series_but_the_totals() {
+        let mut h = History::default();
+        h.push(&metrics(1_000_000, 1.0, false));
+        let s = h.snapshot(None, 180).series;
+        assert!(s.contains_key("disk.active") && !s.keys().any(|k| k.starts_with("disk.0.")));
     }
 
     #[test]

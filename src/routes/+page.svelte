@@ -1141,19 +1141,29 @@
               {/if}
               {#if def.charts}
                 <span class="dl">{tr("detailChart")}</span>
-                <div class="chips" role="radiogroup" aria-label={tr("detailChart")}>
+                <div class="chips" role="group" aria-label={tr("detailChart")} use:tip={tr("detailChartHint")}>
                   {#each def.charts as [id, key] (id)}
                     {@const why = caps.why(tile.id, id)}
-                    <button
-                      class="chip"
-                      class:on={caps.chart(tile.id) === id}
-                      class:off={why}
-                      role="radio"
-                      aria-checked={caps.chart(tile.id) === id}
-                      aria-disabled={!!why}
-                      use:tip={why ? tr(why) : ""}
-                      onclick={() => !why && settings.setChart(tile.id, id)}>{tr(key)}</button
-                    >
+                    {#if id === "none"}
+                      <button
+                        class="chip"
+                        class:on={caps.charts(tile.id).length === 0}
+                        role="checkbox"
+                        aria-checked={caps.charts(tile.id).length === 0}
+                        onclick={() => caps.clearCharts(tile.id)}>{tr(key)}</button
+                      >
+                    {:else}
+                      <button
+                        class="chip"
+                        class:on={caps.hasChart(tile.id, id)}
+                        class:off={why}
+                        role="checkbox"
+                        aria-checked={caps.hasChart(tile.id, id)}
+                        aria-disabled={!!why}
+                        use:tip={why ? tr(why) : ""}
+                        onclick={() => !why && caps.toggleChart(tile.id, id)}>{tr(key)}</button
+                      >
+                    {/if}
                   {/each}
                 </div>
               {/if}

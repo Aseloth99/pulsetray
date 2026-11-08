@@ -4,8 +4,8 @@
   import Spark from "../Spark.svelte";
   import Bar from "../Bar.svelte";
   import Kv from "../Kv.svelte";
+  import ChartStack, { type ChartDef } from "../ChartStack.svelte";
   import { tr } from "../tr";
-  import type { Key } from "../i18n";
   import { bytes, pct, pairBytes, shortName, percent, celsius, wattsNum } from "../format";
   import { store, primaryGpu, type Metrics, type Gpu } from "../metrics.svelte";
   import { settings } from "../settings.svelte";
@@ -50,13 +50,22 @@
     if (badgeKind === "temp" && s.tempC != null) return { text: celsius(s.tempC), hot: true };
     return { text: percent(g.usage), hot: false };
   }
-  const CHARTS: Record<string, { fmt: (v: number) => string; max?: number; label: Key }> = {
-    usage: { fmt: percent, max: 100, label: "usage" },
-    temp: { fmt: celsius, label: "temperature" },
-    vram: { fmt: percent, max: 100, label: "vram" },
-    power: { fmt: wattsNum, label: "power" },
+  /** What the advanced charts can draw; the power chart's top is the card's own limit. */
+  const chartDefs = (g: Gpu): Record<string, ChartDef> => {
+    const def = (id: string, fmt: (v: number) => string, label: string, max?: number): ChartDef => ({
+      series: `gpu.${g.luid}.${id}`,
+      fmt,
+      max,
+      label,
+      color: "var(--gpu)",
+    });
+    return {
+      usage: def("usage", percent, tr("usage"), 100),
+      temp: def("temp", celsius, tr("temperature")),
+      vram: def("vram", percent, tr("vram"), 100),
+      power: def("power", wattsNum, tr("power"), g.sensors.powerLimitW || undefined),
+    };
   };
-  const chartKind = $derived(caps.chart("gpu"));
 </script>
 
 {#if gpu}
@@ -64,7 +73,6 @@
   {@const mm = mem(gpu)}
   {@const hot = s.tempC}
   {@const b = badgeOf(gpu)}
-  {@const ch = CHARTS[chartKind]}
   <Tile
     title={tr("gpu")}
     icon="gpu"
@@ -105,21 +113,7 @@
           {/if}
         </div>
       </div>
-      {#if ch}
-        <Spark
-          data={store.series[`gpu.${gpu.luid}.${chartKind}`] ?? []}
-          times={store.times}
-          windowSecs={settings.historySecs}
-          color="var(--gpu)"
-          max={chartKind === "power" && s.powerLimitW ? s.powerLimitW : ch.max}
-          fmt={ch.fmt}
-          label={tr(ch.label)}
-          pick={caps.quick("gpu", "chart")}
-          height={64}
-          who="gpu"
-          detail
-        />
-      {/if}
+      <ChartStack tile="gpu" defs={chartDefs(gpu)} height={64} who="gpu" />
       {#if (gpu.vramTotal && show("vram")) || (gpu.sharedTotal && show("shared"))}
         <div class="divider"></div>
         <div class="kv">

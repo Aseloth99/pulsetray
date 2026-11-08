@@ -3,6 +3,7 @@
   import Donut from "../Donut.svelte";
   import Spark from "../Spark.svelte";
   import Kv from "../Kv.svelte";
+  import ChartStack, { type ChartDef } from "../ChartStack.svelte";
   import { tr } from "../tr";
   import { bytes, pct, pairBytes, percent } from "../format";
   import { store, type Metrics } from "../metrics.svelte";
@@ -65,9 +66,11 @@
     shown === "commit" ? tr("commit") : shown === "ram" ? tr("ram") : shown === "swap" ? tr("swap") : tr("memCombined"),
   );
   const badgeTip = $derived(shown === "commit" ? tr("commitTip") : shown === "combined" ? tr("memCombinedTip") : tr("memToneTip"));
-  const chartKind = $derived(caps.chart("memory"));
-  /** Swap only when the machine has any; otherwise the chart falls back to RAM. */
-  const chartKey = $derived(chartKind === "none" ? null : chartKind === "swap" && m.swapTotal ? "mem.swap" : "mem.ram");
+  /** What the advanced charts can draw (swap drops out of the choices on a machine without a page file). */
+  const CHARTS = $derived<Record<string, ChartDef>>({
+    ram: { series: "mem.ram", fmt: percent, max: 100, label: tr("ram"), color: "var(--mem)" },
+    swap: { series: "mem.swap", fmt: percent, max: 100, label: tr("swap"), color: "var(--net)" },
+  });
   const showSwap = $derived(m.swapTotal > 0 && (!adv || show("swap")));
 </script>
 
@@ -99,21 +102,7 @@
   {#if !adv}
     <Spark data={store.series["mem.ram"] ?? []} times={store.times} color="var(--mem)" max={100} fmt={percent} height={24} who="mem" />
   {:else}
-    {#if chartKey}
-      <Spark
-        data={store.series[chartKey] ?? []}
-        times={store.times}
-        windowSecs={settings.historySecs}
-        color={chartKey === "mem.swap" ? "var(--net)" : "var(--mem)"}
-        max={100}
-        fmt={percent}
-        label={tr(chartKey === "mem.swap" ? "swap" : "ram")}
-        pick={caps.quick("memory", "chart")}
-        height={56}
-        who="mem"
-        detail
-      />
-    {/if}
+    <ChartStack tile="memory" defs={CHARTS} height={56} who="mem" />
     {@const rows = [
       show("used") && [tr("used"), bytes(m.memUsed)],
       show("available") && [tr("available"), bytes(m.memAvailable)],

@@ -2,7 +2,7 @@ import type { Key } from "./i18n";
 import type { Metrics } from "./metrics.svelte";
 import { store } from "./metrics.svelte";
 import { settings, type TileId } from "./settings.svelte";
-import { DETAIL, type QuickPick } from "./tiledetail";
+import { DETAIL, addedChart, removedChart, replacedChart, type QuickPick } from "./tiledetail";
 import { tr } from "./tr";
 
 /** Always-measured values: missing for this long (not one failed read) before an option is greyed out. */
@@ -43,6 +43,9 @@ class Caps {
     live("cpu.temp", m.cpuTempC != null, "capCpuTemp");
     live("cpu.power", m.cpuPowerW != null, "capCpuPower");
     live("memory.swap", m.swapTotal > 0, "capNoPagefile");
+    // The per-disk counters: tabs and the per-disk list need them (the totals come from elsewhere).
+    live("disk.perDisk", (m.physDisks?.length ?? 0) > 0, "capNotReported");
+    live("disk.tabs", (m.physDisks?.length ?? 0) > 0, "capNotReported");
     if (m.diskHealth) {
       live("disk.temp", m.diskHealth.some((h) => h.tempC != null), "capDriveTemp");
       live("disk.health", m.diskHealth.length > 0, "capDriveHealth");
@@ -84,24 +87,89 @@ class Caps {
     return this.pick(tile, settings.badgeOf(tile), DETAIL[tile]?.badges);
   }
 
-  chart(tile: TileId): string {
-    return this.pick(tile, settings.chartOf(tile), DETAIL[tile]?.charts);
+  /**
+   * The charts a tile shows, in order: the chosen ones this PC can measure. When none of the chosen ones can be
+   * measured the first option that can stands in (a chart that was asked for is never replaced by an empty one);
+   * the choice itself is kept.
+   */
+  charts(tile: TileId): string[] {
+    const chosen = settings.chartsOf(tile);
+    const ok = chosen.filter((id) => !this.why(tile, id));
+    if (ok.length || !chosen.length) return ok;
+    const first = DETAIL[tile]?.charts?.find(([o]) => o !== "none" && !this.why(tile, o))?.[0];
+    return first ? [first] : [];
+  }
+
+  /** Changes the tile's chart list. A stand-in (see `charts`) isn't part of the stored choice: it starts from what is shown. */
+  editCharts(tile: TileId, change: (ids: string[]) => string[]) {
+    const stored = settings.chartsOf(tile);
+    const shown = this.charts(tile);
+    const base = !shown.length || shown.some((id) => stored.includes(id)) ? stored : shown;
+    settings.setCharts(tile, change(base));
+  }
+
+  /** Is this chart on the tile (for the Customize chips)? */
+  hasChart(tile: TileId, id: string): boolean {
+    return this.charts(tile).includes(id);
+  }
+
+  toggleChart(tile: TileId, id: string) {
+    this.editCharts(tile, (ids) => (ids.includes(id) ? removedChart(ids, id) : addedChart(ids, id)));
+  }
+
+  clearCharts(tile: TileId) {
+    settings.setCharts(tile, []);
+  }
+
+  /** The chart options this PC can show, in the tile's order, without "none". */
+  private chartOptions(tile: TileId) {
+    return (DETAIL[tile]?.charts ?? []).filter(([id]) => id !== "none" && !this.why(tile, id));
   }
 
   /**
-   * The list behind a tile's header badge / chart label: what this PC can show, without "none" (a hidden badge
-   * would leave nothing to click on). The choice is the same setting as in Settings > Modules > Customize.
+   * The list behind a tile's header badge: what this PC can show, without "none" (a hidden badge would leave
+   * nothing to click on). The choice is the same setting as in Settings > Modules > Customize.
    * Undefined when there is nothing to choose between.
    */
-  quick(tile: TileId, kind: "badge" | "chart"): QuickPick | undefined {
-    const defs = kind === "badge" ? DETAIL[tile]?.badges : DETAIL[tile]?.charts;
-    const options = (defs ?? [])
+  quick(tile: TileId, kind: "badge"): QuickPick | undefined {
+    const options = (DETAIL[tile]?.badges ?? [])
       .filter(([id]) => id !== "none" && !this.why(tile, id))
       .map(([id, key]) => ({ id, label: tr(key) }));
     if (options.length < 2) return undefined;
-    return kind === "badge"
-      ? { options, value: this.badge(tile), set: (id) => settings.setBadge(tile, id), tip: tr("pickBadgeTip") }
-      : { options, value: this.chart(tile), set: (id) => settings.setChart(tile, id), tip: tr("pickChartTip") };
+    return { options, value: this.badge(tile), set: (id) => settings.setBadge(tile, id), tip: tr("pickBadgeTip") };
+  }
+
+  /**
+   * The list behind one chart's name: switch this chart to another one that isn't on the tile yet, or (when another
+   * chart stays) take it away. Undefined when there is neither.
+   */
+  chartPick(tile: TileId, id: string): QuickPick | undefined {
+    const shown = this.charts(tile);
+    const options = this.chartOptions(tile)
+      .filter(([o]) => o === id || !shown.includes(o))
+      .map(([o, key]) => ({ id: o, label: tr(key) }));
+    const remove =
+      shown.length > 1
+        ? { label: tr("removeChart"), run: () => this.editCharts(tile, (ids) => removedChart(ids, id)) }
+        : undefined;
+    if (options.length < 2 && !remove) return undefined;
+    return {
+      options,
+      value: id,
+      set: (to) => this.editCharts(tile, (ids) => replacedChart(ids, id, to)),
+      tip: tr("pickChartTip"),
+      remove,
+    };
+  }
+
+  /** The list behind "add a chart": what this PC can show and the tile doesn't yet. Undefined when that is nothing. */
+  chartAdd(tile: TileId): QuickPick | undefined {
+    const shown = this.charts(tile);
+    const options = this.chartOptions(tile)
+      .filter(([o]) => !shown.includes(o))
+      .map(([o, key]) => ({ id: o, label: tr(key) }));
+    if (!options.length) return undefined;
+    return { options, value: "", set: (to) => this.editCharts(tile, (ids) => addedChart(ids, to)), tip: tr("addChartTip") };
   }
 
   private pick(tile: TileId, chosen: string, options?: [string, Key][]): string {

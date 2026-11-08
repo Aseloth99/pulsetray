@@ -2,7 +2,7 @@ use crate::battery::{self, BatteryDetail};
 use crate::diskhealth::{self, DiskHealth};
 use crate::gpusensors::{self, GpuSensors};
 use crate::hardware::{self, GpuStatic};
-use crate::pdh::Pdh;
+use crate::pdh::{Pdh, PhysDisk};
 use crate::procs::ProcTable;
 use crate::usage::UsageStore;
 use crate::wifi::{self, WifiInfo};
@@ -121,6 +121,9 @@ pub struct Metrics {
     pub disk_write: f64,
     pub disk_active: f32,
     pub disks: Vec<DiskInfo>,
+    /// Activity of every physical disk (what `disk_active` / `disk_read` / `disk_write` add up); empty where
+    /// Windows has no per-disk counters.
+    pub phys_disks: Vec<PhysDisk>,
     /// Temperature / wear per physical drive (see diskhealth.rs); refreshed every 30 s while on screen.
     pub disk_health: Vec<DiskHealth>,
     // GPU / battery / Wi-Fi / processes / system
@@ -169,6 +172,7 @@ struct Cache {
     disk_read: f64,
     disk_write: f64,
     disk_active: f32,
+    phys_disks: Vec<PhysDisk>,
     cpu_freq: u64,
     /// Task Manager's CPU load (total and per logical processor), when the counters exist.
     cpu_busy: Option<f32>,
@@ -454,6 +458,7 @@ impl Sampler {
             disk_write: c.disk_write,
             disk_active: c.disk_active,
             disks: c.disks.clone(),
+            phys_disks: c.phys_disks.clone(),
             disk_health: c.disk_health.clone(),
             gpus: c.gpus.clone(),
             battery: read_battery(c.battery_detail.clone()),
@@ -522,6 +527,7 @@ impl Sampler {
             c.cpu_busy = p.cpu_busy();
             c.core_busy = p.core_busy();
             c.disk_active = p.disk_active();
+            c.phys_disks = p.physical_disks();
             if let Some(mhz) = p.cpu_mhz() {
                 c.cpu_freq = mhz;
             }

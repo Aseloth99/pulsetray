@@ -24,7 +24,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { tr } from "./tr";
   import type { Key } from "./i18n";
-  import { bytes as fmtBytes, rate } from "./format";
+  import { bytes as fmtBytes, rate, mean } from "./format";
   import { tooltip, tip } from "./tipstate.svelte";
   import Icon from "./Icon.svelte";
   import OptionMenu from "./OptionMenu.svelte";
@@ -144,6 +144,8 @@
     for (const p of raw) if (p.v != null && (best === null || p.v >= (best.v as number))) best = p;
     return best;
   });
+  /** The average of the samples in the window (exact, also when the drawing is slotted); a handful of samples say little. */
+  const average = $derived(raw.filter((p) => p.v != null).length >= 5 ? mean(raw.map((p) => p.v)) : null);
   const top = $derived(max ?? niceTop(Math.max((peak?.v as number) ?? 0, floor) * 1.08, bytes));
   const y = (v: number) => H - 1 - (Math.min(Math.max(v, 0), top) / top) * (H - 6);
 
@@ -273,7 +275,10 @@
       {#if hovered}
         <span class="read"><b>{fmt(hovered.v as number)}</b> · {ago(hovered)}</span>
       {:else if peak && (peak.v as number) > 0}
-        <span class="read">{tr("peak")} <b>{fmt(peak.v as number)}</b> · {ago(peak)}</span>
+        <span class="read wrap"
+          ><span class="main">{#if average != null}{tr("avgShort")} <b>{fmt(average)}</b>{" · "}{/if}{tr("peak")} <b>{fmt(peak.v as number)}</b></span
+          ><span class="ago">{" · "}{ago(peak)}</span></span
+        >
       {/if}
     </div>
   {/if}
@@ -357,6 +362,20 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* average and peak always stay; "how long ago" wraps out of the clipped line when there is no room for all of it
+     (a half-cut "1 dk 39 s…" says nothing) */
+  .read.wrap {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    height: 1.3em;
+    line-height: 1.3;
+  }
+  .read.wrap .main {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .read b {
     color: var(--text);

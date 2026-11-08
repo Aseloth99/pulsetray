@@ -48,7 +48,7 @@
     if (top + h > window.innerHeight - margin) top = Math.max(margin, r.top - h - 4);
     pos = { left: Math.min(Math.max(left, margin), Math.max(margin, window.innerWidth - w - margin)), top };
     // Focus goes to the current choice once the list is visible (a hidden element can't take focus).
-    tick().then(() => menu?.querySelector<HTMLElement>("[aria-checked=true]")?.focus());
+    tick().then(() => (menu?.querySelector<HTMLElement>("[aria-checked=true]") ?? menu?.querySelector<HTMLElement>("button"))?.focus());
   });
 
   // A list left open must not stay put when the content under it moves or the popup goes away.
@@ -110,6 +110,19 @@
         {o.label}
       </button>
     {/each}
+    {#if pick.remove}
+      {@const rm = pick.remove}
+      <hr />
+      <button
+        type="button"
+        role="menuitem"
+        class="rm"
+        onclick={() => {
+          rm.run();
+          close();
+        }}>{rm.label}</button
+      >
+    {/if}
   </div>
 {/if}
 
@@ -151,5 +164,11 @@
     color: var(--text);
     font-weight: 650;
     box-shadow: var(--inset-sm);
+  }
+  hr {
+    border: 0;
+    height: 1px;
+    margin: 3px 6px;
+    background: color-mix(in srgb, var(--lo) 55%, transparent);
   }
 </style>
