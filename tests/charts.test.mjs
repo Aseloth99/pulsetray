@@ -94,3 +94,11 @@ test("every tile's chart ids are in the tiles that draw them", () => {
     }
   }
 });
+
+test("a chart moves one place at a time and stays inside the list", () => {
+  assert.deepEqual(d.movedChart(["usage", "temp", "power"], "power", -1), ["usage", "power", "temp"]);
+  assert.deepEqual(d.movedChart(["usage", "temp", "power"], "usage", 1), ["temp", "usage", "power"]);
+  assert.deepEqual(d.movedChart(["usage", "temp"], "usage", -1), ["usage", "temp"], "already first");
+  assert.deepEqual(d.movedChart(["usage", "temp"], "temp", 1), ["usage", "temp"], "already last");
+  assert.deepEqual(d.movedChart(["usage", "temp"], "gone", 1), ["usage", "temp"]);
+});

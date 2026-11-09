@@ -2,7 +2,7 @@ import type { Key } from "./i18n";
 import type { Metrics } from "./metrics.svelte";
 import { store } from "./metrics.svelte";
 import { settings, type TileId } from "./settings.svelte";
-import { DETAIL, addedChart, removedChart, replacedChart, type QuickPick } from "./tiledetail";
+import { DETAIL, addedChart, movedChart, removedChart, replacedChart, type QuickPick } from "./tiledetail";
 import { tr } from "./tr";
 
 /** Always-measured values: missing for this long (not one failed read) before an option is greyed out. */
@@ -115,6 +115,10 @@ class Caps {
 
   toggleChart(tile: TileId, id: string) {
     this.editCharts(tile, (ids) => (ids.includes(id) ? removedChart(ids, id) : addedChart(ids, id)));
+  }
+
+  moveChart(tile: TileId, id: string, by: number) {
+    this.editCharts(tile, (ids) => movedChart(ids, id, by));
   }
 
   clearCharts(tile: TileId) {

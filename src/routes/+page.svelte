@@ -784,7 +784,15 @@
   const historyKey: Record<number, Key> = { 180: "hist3m", 900: "hist15m", 3600: "hist1h" };
 </script>
 
-<svelte:window onkeydown={onKey} onresize={onResize} />
+<!-- No browser menu (Back / Reload / Save as / Print) in an app window; text fields keep theirs for copy and paste. -->
+<svelte:window
+  onkeydown={onKey}
+  onresize={onResize}
+  oncontextmenu={(e) => {
+    const t = e.target as HTMLElement | null;
+    if (!t?.closest?.("input, textarea, [contenteditable]")) e.preventDefault();
+  }}
+/>
 
 <!-- One tile, used by the main view and by the live preview in Settings > Modules > Customize. -->
 {#snippet tileOf(id: TileId, mm: NonNullable<typeof m>, advMode: boolean, extra: number, onHistory: () => void)}
@@ -1096,7 +1104,7 @@
               <!-- The tile as it looks with the current choices, live, so nobody has to go back to the main view. -->
               <div class="dprev">
                 <span class="dl">{tr("detailPreview")}</span>
-                <div class="dprev-card" inert aria-hidden="true">
+                <div class="dprev-card">
                   {#if m}
                     {@render tileOf(tile.id, m, true, 0, () => {})}
                   {:else}
@@ -1166,6 +1174,31 @@
                     {/if}
                   {/each}
                 </div>
+                {#if caps.charts(tile.id).length > 1}
+                  {@const order = caps.charts(tile.id)}
+                  <span class="dl">{tr("chartOrder")}</span>
+                  <ol class="order">
+                    {#each order as id, n (id)}
+                      <li>
+                        <span class="oname">{tr(def.charts.find(([o]) => o === id)?.[1] ?? "detailChart")}</span>
+                        <button
+                          class="icon-btn sm"
+                          disabled={n === 0}
+                          aria-label={tr("moveEarlier")}
+                          use:tip={tr("moveEarlier")}
+                          onclick={() => caps.moveChart(tile.id, id, -1)}><Icon name="up" size={12} /></button
+                        >
+                        <button
+                          class="icon-btn sm"
+                          disabled={n === order.length - 1}
+                          aria-label={tr("moveLater")}
+                          use:tip={tr("moveLater")}
+                          onclick={() => caps.moveChart(tile.id, id, 1)}><Icon name="down" size={12} /></button
+                        >
+                      </li>
+                    {/each}
+                  </ol>
+                {/if}
               {/if}
               {#each def.picks ?? [] as p (p.id)}
                 <span class="dl">{tr(p.label)}</span>
@@ -1749,9 +1782,6 @@
     position: sticky;
     top: 6px;
   }
-  .dprev-card {
-    pointer-events: none;
-  }
   @media (max-width: 600px) {
     .detail {
       grid-template-columns: minmax(0, 1fr);
@@ -1759,6 +1789,27 @@
     .dprev {
       position: static;
     }
+  }
+  .order {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .order li {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 10px;
+    border-radius: 9px;
+    box-shadow: var(--inset-sm);
+    font-size: 11.5px;
+  }
+  .oname {
+    flex: 1;
+    min-width: 0;
   }
   .dl {
     font-size: 11px;

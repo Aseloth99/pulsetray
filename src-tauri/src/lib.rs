@@ -843,6 +843,25 @@ fn set_webview_trim(window: &WebviewWindow, trim: bool) {
     let _ = (window, trim);
 }
 
+/// Takes the pages nobody is touching out of the working sets of this process and of the WebView2 processes it
+/// started. They stay in memory as cached pages and come back on their first use, but while the popup is hidden
+/// Task Manager shows what is really needed (a few MB) instead of what the popup left behind (100+ MB).
+fn trim_working_sets() {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::ProcessStatus::EmptyWorkingSet;
+        use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA};
+        let Some(list) = procs::list_now() else { return };
+        for pid in procs::descendants(&list, std::process::id()) {
+            if let Ok(h) = OpenProcess(PROCESS_SET_QUOTA | PROCESS_QUERY_INFORMATION, false, pid) {
+                let _ = EmptyWorkingSet(h);
+                let _ = CloseHandle(h);
+            }
+        }
+    }
+}
+
 fn trim_webview(app: &AppHandle, trim: bool) {
     let state = app.state::<Arc<AppState>>();
     if state.trimmed.swap(trim, Ordering::SeqCst) == trim {
@@ -850,6 +869,16 @@ fn trim_webview(app: &AppHandle, trim: bool) {
     }
     if let Some(w) = app.get_webview_window("main") {
         set_webview_trim(&w, trim);
+    }
+    if trim {
+        // A moment later, once the page has let go of what it was drawing; not if the popup came back meanwhile.
+        let st = state.inner().clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(3));
+            if st.trimmed.load(Ordering::SeqCst) {
+                trim_working_sets();
+            }
+        });
     }
 }
 

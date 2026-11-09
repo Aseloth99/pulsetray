@@ -271,7 +271,13 @@
               aria-expanded={open}
               use:tip={open ? "" : pick.tip}
               onclick={toggle}><b>{label}</b><Icon name="down" size={9} /></button
-            >{/snippet}</OptionMenu>{:else}<b class="name" style="color:{color}">{label}</b>{/if}<span class="sep">·</span>{/if}{scale}</span>
+            >{/snippet}</OptionMenu>{:else}<b class="name" style="color:{color}">{label}</b>{/if}<span class="sep">·</span>{/if}{scale}{#if pick?.remove}<button
+          type="button"
+          class="rm"
+          aria-label={pick.remove.label}
+          use:tip={pick.remove.label}
+          onclick={pick.remove.run}><Icon name="x" size={10} /></button
+        >{/if}</span>
       {#if hovered}
         <span class="read"><b>{fmt(hovered.v as number)}</b> · {ago(hovered)}</span>
       {:else if peak && (peak.v as number) > 0}
@@ -349,6 +355,26 @@
     padding: 2px 5px 2px 6px;
     border-radius: 7px;
     cursor: pointer;
+  }
+  /* take this chart away (only when another one stays) */
+  button.rm {
+    display: inline-flex;
+    align-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 3px;
+    margin: -3px 0 -3px 2px;
+    border-radius: 6px;
+    opacity: 0.7;
+    cursor: pointer;
+  }
+  button.rm:hover,
+  button.rm:focus-visible {
+    opacity: 1;
+    color: var(--danger);
+    outline: none;
+    box-shadow: var(--inset-sm);
   }
   button.pick :global(svg) {
     opacity: 0.7;

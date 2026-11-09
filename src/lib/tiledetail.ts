@@ -262,6 +262,16 @@ export const addedChart = (ids: readonly string[], id: string): string[] => (ids
 
 export const removedChart = (ids: readonly string[], id: string): string[] => ids.filter((x) => x !== id);
 
+/** `id` moved `by` places (negative = earlier), kept inside the list. */
+export function movedChart(ids: readonly string[], id: string, by: number): string[] {
+  const from = ids.indexOf(id);
+  const to = Math.min(ids.length - 1, Math.max(0, from + by));
+  if (from < 0 || to === from) return [...ids];
+  const out = ids.filter((x) => x !== id);
+  out.splice(to, 0, id);
+  return out;
+}
+
 /** `from` replaced by `to` in the same place; when `to` is on the list already, `from` just goes. */
 export function replacedChart(ids: readonly string[], from: string, to: string): string[] {
   if (from === to) return [...ids];

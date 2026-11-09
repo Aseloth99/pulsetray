@@ -40,7 +40,9 @@
   const cur = $derived(sel ?? { active: m.diskActive, read: m.diskRead, write: m.diskWrite });
   /** With several disks the numbers of "all" are sums: say so on hover. */
   const sum = $derived(!sel && phys.length >= 2 ? tr("diskTotalTip") : undefined);
-  const models = $derived((store.hw?.drives ?? []).filter((p) => !sel || p.index === sel.index));
+  const perDiskOn = $derived(show("perDisk") && !sel && phys.length >= 2);
+  /** The model rows say what the per-disk list says (name, size, bus), so with that list they step aside. */
+  const models = $derived(perDiskOn ? [] : (store.hw?.drives ?? []).filter((p) => !sel || p.index === sel.index));
   // chart names are the same words as the options in Settings (Active / Read / Write)
   const CHARTS = $derived.by<Record<string, ChartDef>>(() => {
     const sp = seriesPrefix(sel);
@@ -99,6 +101,12 @@
     return lines.join("\n");
   }
   const shownHealth = $derived(sel ? health.filter((h) => h.index === sel.index) : health);
+  /** Disks that don't answer the health query (typically behind a USB bridge): named, so their absence isn't a mystery. */
+  const unread = $derived(
+    (store.hw?.drives ?? []).filter(
+      (d) => d.index != null && !health.some((h) => h.index === d.index) && (!sel || d.index === sel.index),
+    ),
+  );
   /** The badge follows what the tile shows: all disks, or the chosen one. */
   const hottest = $derived(
     shownHealth.filter((h) => h.tempC != null).sort((a, b) => (b.tempC as number) - (a.tempC as number))[0],
@@ -192,7 +200,7 @@
         {/if}
       </div>
     {/if}
-    {#if show("perDisk") && !sel && phys.length >= 2}
+    {#if perDiskOn}
       <div class="divider"></div>
       <span class="sub">{tr("perDisk")}</span>
       {#each phys as p (p.index)}
@@ -205,7 +213,7 @@
         {/if}
       {/each}
     {/if}
-    {#if show("health") && shownHealth.length}
+    {#if show("health") && (shownHealth.length || unread.length)}
       <div class="divider"></div>
       <span class="sub">{tr("diskHealth")}</span>
       {#each shownHealth as h (h.index)}
@@ -218,6 +226,14 @@
             </span>
           </div>
           {#if summary(h)}<span class="hsum">{summary(h)}</span>{/if}
+        </div>
+      {/each}
+      {#each unread as d (d.index)}
+        <div class="health" title={tr("healthUnreadTip")}>
+          <div class="hrow">
+            <span class="hname">{d.model || `${tr("drives")} ${d.index}`}</span>
+            <span class="hval"><span class="hsum">{tr("healthUnread")}</span></span>
+          </div>
         </div>
       {/each}
     {/if}
