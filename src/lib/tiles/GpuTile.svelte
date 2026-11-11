@@ -51,6 +51,9 @@
     return { text: percent(g.usage), hot: false };
   }
   /** What the advanced charts can draw; the power chart's top is the card's own limit. */
+  /** A card only offers the charts it has a reading for (an iGPU without a power sensor has no power chart). */
+  const canDraw = (g: Gpu) => (id: string) =>
+    id === "power" ? g.sensors.powerW != null : id === "temp" ? g.sensors.tempC != null : id === "vram" ? g.vramTotal > 0 : true;
   const chartDefs = (g: Gpu): Record<string, ChartDef> => {
     const def = (id: string, fmt: (v: number) => string, label: string, max?: number): ChartDef => ({
       series: `gpu.${g.luid}.${id}`,
@@ -113,7 +116,7 @@
           {/if}
         </div>
       </div>
-      <ChartStack tile="gpu" defs={chartDefs(gpu)} height={64} who="gpu" />
+      <ChartStack tile="gpu" defs={chartDefs(gpu)} has={canDraw(gpu)} height={64} who="gpu" />
       {#if (gpu.vramTotal && show("vram")) || (gpu.sharedTotal && show("shared"))}
         <div class="divider"></div>
         <div class="kv">

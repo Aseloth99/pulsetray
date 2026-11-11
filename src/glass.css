@@ -229,6 +229,7 @@
 /* ------------------------------------------------------------------ floating panels (blur whatever is behind them) */
 :root[data-style="glass"] .tip,
 :root[data-style="glass"] .ctx,
+:root[data-style="glass"] .menu[popover],
 :root[data-style="glass"] .acts .menu {
   background: var(--g-pop);
   -webkit-backdrop-filter: var(--g-blur);

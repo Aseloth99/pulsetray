@@ -102,3 +102,53 @@ test("a chart moves one place at a time and stays inside the list", () => {
   assert.deepEqual(d.movedChart(["usage", "temp"], "temp", 1), ["usage", "temp"], "already last");
   assert.deepEqual(d.movedChart(["usage", "temp"], "gone", 1), ["usage", "temp"]);
 });
+
+test("a GPU only offers the charts it has a reading for", () => {
+  const tile = read("src/lib/tiles/GpuTile.svelte");
+  assert.match(tile, /has=\{canDraw\(gpu\)\}/);
+  assert.match(tile, /id === "power" \? g\.sensors\.powerW != null/);
+  const stack = read("src/lib/ChartStack.svelte");
+  assert.match(stack, /caps\.chartAdd\(tile, has\)/);
+  assert.match(stack, /caps\.chartPick\(tile, id, has\)/);
+});
+
+test("the scroll area is its own layer (smooth scrolling with the blurred shadows)", () => {
+  assert.match(read("src/routes/+page.svelte"), /main \{[^}]*will-change: scroll-position/);
+});
+
+test("a long window's slots stay put as new samples arrive (the line must not shimmer every second)", async () => {
+  const { slotSamples } = await lib("slots");
+  const W = 1000;
+  const windowSecs = 900; // 15 min: 900 one-second samples into 300 slots
+  const value = (sec) => 20 + ((sec * 7919) % 61); // jumpy, deterministic
+  const frame = (nowSec) => {
+    const raw = [];
+    for (let s = nowSec - windowSecs + 1; s <= nowSec; s++) {
+      raw.push({ i: raw.length, x: (1 - (nowSec - s) / windowSecs) * W, v: value(s), t: s * 1000, gap: false });
+    }
+    return slotSamples(raw, { width: W, windowSecs, maxPoints: 300, gapMs: 3500, latest: nowSec * 1000 });
+  };
+  const a = frame(10_000);
+  const b = frame(10_001);
+  assert.ok(a.length <= 301 && b.length <= 301, "the path stays a few hundred points long");
+  // Heights of the slots in the middle of the window are the same one second later (only the edges change).
+  const byT = (pts) => new Map(pts.map((p) => [p.t, p.v]));
+  const mb = byT(b);
+  let same = 0;
+  let total = 0;
+  for (const p of a.slice(5, -5)) {
+    total++;
+    if (mb.get(p.t) === p.v) same++;
+  }
+  assert.ok(same / total > 0.99, `slot heights changed between frames: ${same}/${total} unchanged`);
+  // And a slot moves left by exactly the time that passed, not by a re-dealt amount.
+  const shift = b.find((p) => p.t === a[100].t)?.x - a[100].x;
+  assert.ok(Math.abs(shift + W / windowSecs) < 1e-6, `slot x moved ${shift}`);
+  // A short spike survives slotting.
+  const raw = [];
+  for (let s = 0; s < 900; s++) raw.push({ i: s, x: (s / 899) * W, v: s === 450 ? 100 : 10, t: s * 1000, gap: false });
+  const out = slotSamples(raw, { width: W, windowSecs: 900, maxPoints: 300, gapMs: 3500, latest: 899_000 });
+  assert.equal(Math.max(...out.map((p) => p.v)), 100);
+  // Few samples are drawn as they are.
+  assert.equal(slotSamples(raw.slice(0, 100), { width: W, windowSecs: 900, maxPoints: 300, gapMs: 3500, latest: 99_000 }).length, 100);
+});

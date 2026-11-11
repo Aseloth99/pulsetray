@@ -28,6 +28,7 @@
   import { tooltip, tip } from "./tipstate.svelte";
   import Icon from "./Icon.svelte";
   import OptionMenu from "./OptionMenu.svelte";
+  import { slotSamples } from "./slots";
   import type { QuickPick } from "./tiledetail";
 
   /** "Who caused this peak?": the apps that used the most of this resource around the hovered moment. */
@@ -115,27 +116,7 @@
    * What is drawn: the samples themselves, or for a long window one point per time slot with the slot's highest
    * value (a short spike stays visible, the path stays a few hundred points long however long the window is).
    */
-  const pts = $derived.by(() => {
-    if (raw.length <= MAX_POINTS || raw[0].t == null) return raw;
-    const slot = (windowSecs * 1000) / MAX_POINTS;
-    const out: P[] = [];
-    let cur: P | null = null;
-    let curSlot = -1;
-    let lastT: number | null = null;
-    for (const p of raw) {
-      const s = Math.min(MAX_POINTS - 1, Math.floor(((p.x / W) * windowSecs * 1000) / slot));
-      if (s !== curSlot || p.gap) {
-        if (cur) out.push(cur);
-        cur = { ...p, x: ((s + 0.5) / MAX_POINTS) * W, gap: lastT != null && (p.t as number) - lastT > gapMs };
-        curSlot = s;
-      } else if (p.v != null && (cur!.v == null || p.v >= (cur!.v as number))) {
-        cur = { ...cur!, v: p.v, t: p.t, i: p.i };
-      }
-      lastT = p.t;
-    }
-    if (cur) out.push(cur);
-    return out;
-  });
+  const pts = $derived(slotSamples(raw, { width: W, windowSecs, maxPoints: MAX_POINTS, gapMs, latest }));
 
   /** The highest sample in the window (exact, also when the drawing is slotted). */
   const peak = $derived.by(() => {
