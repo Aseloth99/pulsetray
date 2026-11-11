@@ -3,6 +3,9 @@ import type { Metrics } from "./metrics.svelte";
 import { store } from "./metrics.svelte";
 import { settings, type TileId } from "./settings.svelte";
 import { DETAIL, addedChart, movedChart, removedChart, replacedChart, type QuickPick } from "./tiledetail";
+
+/** Extra, per-view availability of a chart (e.g. the GPU shown has no power sensor); the global `why` still applies. */
+export type ChartHas = (id: string) => boolean;
 import { tr } from "./tr";
 
 /** Always-measured values: missing for this long (not one failed read) before an option is greyed out. */
@@ -92,18 +95,19 @@ class Caps {
    * measured the first option that can stands in (a chart that was asked for is never replaced by an empty one);
    * the choice itself is kept.
    */
-  charts(tile: TileId): string[] {
+  charts(tile: TileId, has?: ChartHas): string[] {
     const chosen = settings.chartsOf(tile);
-    const ok = chosen.filter((id) => !this.why(tile, id));
+    const usable = (id: string) => !this.why(tile, id) && (has?.(id) ?? true);
+    const ok = chosen.filter(usable);
     if (ok.length || !chosen.length) return ok;
-    const first = DETAIL[tile]?.charts?.find(([o]) => o !== "none" && !this.why(tile, o))?.[0];
+    const first = DETAIL[tile]?.charts?.find(([o]) => o !== "none" && usable(o))?.[0];
     return first ? [first] : [];
   }
 
   /** Changes the tile's chart list. A stand-in (see `charts`) isn't part of the stored choice: it starts from what is shown. */
-  editCharts(tile: TileId, change: (ids: string[]) => string[]) {
+  editCharts(tile: TileId, change: (ids: string[]) => string[], has?: ChartHas) {
     const stored = settings.chartsOf(tile);
-    const shown = this.charts(tile);
+    const shown = this.charts(tile, has);
     const base = !shown.length || shown.some((id) => stored.includes(id)) ? stored : shown;
     settings.setCharts(tile, change(base));
   }
@@ -126,8 +130,8 @@ class Caps {
   }
 
   /** The chart options this PC can show, in the tile's order, without "none". */
-  private chartOptions(tile: TileId) {
-    return (DETAIL[tile]?.charts ?? []).filter(([id]) => id !== "none" && !this.why(tile, id));
+  private chartOptions(tile: TileId, has?: ChartHas) {
+    return (DETAIL[tile]?.charts ?? []).filter(([id]) => id !== "none" && !this.why(tile, id) && (has?.(id) ?? true));
   }
 
   /**
@@ -147,33 +151,33 @@ class Caps {
    * The list behind one chart's name: switch this chart to another one that isn't on the tile yet, or (when another
    * chart stays) take it away. Undefined when there is neither.
    */
-  chartPick(tile: TileId, id: string): QuickPick | undefined {
-    const shown = this.charts(tile);
-    const options = this.chartOptions(tile)
+  chartPick(tile: TileId, id: string, has?: ChartHas): QuickPick | undefined {
+    const shown = this.charts(tile, has);
+    const options = this.chartOptions(tile, has)
       .filter(([o]) => o === id || !shown.includes(o))
       .map(([o, key]) => ({ id: o, label: tr(key) }));
     const remove =
       shown.length > 1
-        ? { label: tr("removeChart"), run: () => this.editCharts(tile, (ids) => removedChart(ids, id)) }
+        ? { label: tr("removeChart"), run: () => this.editCharts(tile, (ids) => removedChart(ids, id), has) }
         : undefined;
     if (options.length < 2 && !remove) return undefined;
     return {
       options,
       value: id,
-      set: (to) => this.editCharts(tile, (ids) => replacedChart(ids, id, to)),
+      set: (to) => this.editCharts(tile, (ids) => replacedChart(ids, id, to), has),
       tip: tr("pickChartTip"),
       remove,
     };
   }
 
   /** The list behind "add a chart": what this PC can show and the tile doesn't yet. Undefined when that is nothing. */
-  chartAdd(tile: TileId): QuickPick | undefined {
-    const shown = this.charts(tile);
-    const options = this.chartOptions(tile)
+  chartAdd(tile: TileId, has?: ChartHas): QuickPick | undefined {
+    const shown = this.charts(tile, has);
+    const options = this.chartOptions(tile, has)
       .filter(([o]) => !shown.includes(o))
       .map(([o, key]) => ({ id: o, label: tr(key) }));
     if (!options.length) return undefined;
-    return { options, value: "", set: (to) => this.editCharts(tile, (ids) => addedChart(ids, to)), tip: tr("addChartTip") };
+    return { options, value: "", set: (to) => this.editCharts(tile, (ids) => addedChart(ids, to), has), tip: tr("addChartTip") };
   }
 
   private pick(tile: TileId, chosen: string, options?: [string, Key][]): string {

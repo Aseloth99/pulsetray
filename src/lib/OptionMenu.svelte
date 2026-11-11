@@ -36,9 +36,8 @@
     close(true);
   }
 
-  /** Under the trigger, flipped above when it would fall off the bottom, kept inside the window. */
-  $effect(() => {
-    if (!open || !menu || !anchor) return;
+  function place() {
+    if (!menu || !anchor) return;
     const r = anchor.getBoundingClientRect();
     const w = menu.offsetWidth;
     const h = menu.offsetHeight;
@@ -47,28 +46,49 @@
     let top = r.bottom + 4;
     if (top + h > window.innerHeight - margin) top = Math.max(margin, r.top - h - 4);
     pos = { left: Math.min(Math.max(left, margin), Math.max(margin, window.innerWidth - w - margin)), top };
+  }
+
+  /** Under the trigger, flipped above when it would fall off the bottom, kept inside the window. */
+  $effect(() => {
+    if (!open || !menu || !anchor) return;
+    // In the top layer the list can't be clipped or moved by a card around its button (a transform, a filter, an
+    // overflow); where the browser lacks popovers it stays a plain fixed element.
+    try {
+      if (!menu.matches(":popover-open")) menu.showPopover();
+    } catch {}
+    place();
     // Focus goes to the current choice once the list is visible (a hidden element can't take focus).
     tick().then(() => (menu?.querySelector<HTMLElement>("[aria-checked=true]") ?? menu?.querySelector<HTMLElement>("button"))?.focus());
   });
 
-  // A list left open must not stay put when the content under it moves or the popup goes away.
+  // A list left open must not stay put when the popup goes away. A scroll or a resize (the popup re-fits its height
+  // as the numbers change) is no reason to close it: it follows its button, and goes only when the button is no
+  // longer in view.
   $effect(() => {
     if (!open) return;
     const away = (e: Event) => {
       if (!menu?.contains(e.target as Node) && !anchor?.contains(e.target as Node)) close();
     };
+    // Focus can flicker right as the list opens (the click itself moves it); only a blur that lasts closes the list.
     const hide = () => close();
+    const lost = () => setTimeout(() => !document.hasFocus() && close(), 250);
+    const follow = () => {
+      if (!anchor?.isConnected) return close();
+      const r = anchor.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) return close();
+      place();
+    };
     document.addEventListener("pointerdown", away, true);
-    document.addEventListener("scroll", hide, true);
+    document.addEventListener("scroll", follow, true);
     document.addEventListener("visibilitychange", hide);
-    window.addEventListener("blur", hide);
-    window.addEventListener("resize", hide);
+    window.addEventListener("blur", lost);
+    window.addEventListener("resize", follow);
     return () => {
       document.removeEventListener("pointerdown", away, true);
-      document.removeEventListener("scroll", hide, true);
+      document.removeEventListener("scroll", follow, true);
       document.removeEventListener("visibilitychange", hide);
-      window.removeEventListener("blur", hide);
-      window.removeEventListener("resize", hide);
+      window.removeEventListener("blur", lost);
+      window.removeEventListener("resize", follow);
     };
   });
 
@@ -95,6 +115,7 @@
     class="menu"
     role="menu"
     tabindex="-1"
+    popover="manual"
     bind:this={menu}
     onkeydown={onKey}
     style="left:{pos?.left ?? 0}px;top:{pos?.top ?? 0}px;visibility:{pos ? 'visible' : 'hidden'}"
@@ -130,6 +151,11 @@
   .menu {
     position: fixed;
     z-index: 90;
+    margin: 0;
+    inset: auto;
+    border: 0;
+    overflow: visible;
+    color: inherit;
     min-width: 120px;
     max-width: 240px;
     padding: 5px;

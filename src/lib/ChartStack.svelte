@@ -26,16 +26,19 @@
     defs,
     height = 64,
     who,
+    has,
   }: {
     tile: TileId;
     defs: Record<string, ChartDef>;
     height?: number;
     /** Charts of a time axis can name the apps behind a peak; a chart of one part of the tile (one disk) can't. */
     who?: "cpu" | "mem" | "disk" | "gpu";
+    /** Charts this view can't draw (the GPU shown has no power sensor) are neither shown nor offered. */
+    has?: (id: string) => boolean;
   } = $props();
 
-  const ids = $derived(caps.charts(tile).filter((id) => defs[id]));
-  const add = $derived(caps.chartAdd(tile));
+  const ids = $derived(caps.charts(tile, has).filter((id) => defs[id]));
+  const add = $derived(caps.chartAdd(tile, has));
 </script>
 
 {#each ids as id (id)}
@@ -50,7 +53,7 @@
     bytes={d.bytes}
     floor={d.floor}
     label={d.label}
-    pick={caps.chartPick(tile, id)}
+    pick={caps.chartPick(tile, id, has)}
     {height}
     {who}
     detail
