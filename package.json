@@ -1,6 +1,6 @@
 {
   "name": "pulsetray",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lightweight system monitor for the Windows tray",
   "type": "module",
   "scripts": {
