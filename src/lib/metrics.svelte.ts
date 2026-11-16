@@ -315,6 +315,7 @@ class Store {
     put("mem.swap", share(m.swapUsed, m.swapTotal));
     put("net.down", m.netDown);
     put("net.up", m.netUp);
+    put("net.total", m.netDown + m.netUp);
     put("disk.active", m.diskActive);
     put("disk.read", m.diskRead);
     put("disk.write", m.diskWrite);

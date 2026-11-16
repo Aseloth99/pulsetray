@@ -33,6 +33,7 @@ export const DETAIL: Record<string, DetailDef> = {
       ["temp", "temperature"],
       ["clock", "clock"],
       ["usage", "usage"],
+      ["power", "cpuPower"],
       ["none", "none"],
     ],
     charts: [
@@ -96,15 +97,22 @@ export const DETAIL: Record<string, DetailDef> = {
   },
   network: {
     rows: [
-      ["downChart", "downChart"],
-      ["upChart", "upChart"],
       ["adapter", "adapter"],
       ["ip", "ip"],
       ["linkSpeed", "linkSpeed"],
       ["totals", "netTotals"],
     ],
     badges: [
+      ["rates", "netRates"],
+      ["total", "netTotalRate"],
+      ["today", "netToday"],
       ["link", "linkSpeed"],
+      ["none", "none"],
+    ],
+    charts: [
+      ["down", "download"],
+      ["up", "upload"],
+      ["total", "netTotalRate"],
       ["none", "none"],
     ],
   },
@@ -307,7 +315,15 @@ export function cleanDetails(raw: unknown): Record<string, Detail> {
     }
     // Before several charts were possible one was stored as `chart` ("none" = no chart); `charts` replaced it.
     const legacy = pick((d as { chart?: unknown }).chart, def.charts);
-    const stored = Array.isArray(d.charts) ? d.charts : legacy ? (legacy === "none" ? [] : [legacy]) : null;
+    let stored = Array.isArray(d.charts) ? d.charts : legacy ? (legacy === "none" ? [] : [legacy]) : null;
+    // The network tile's two charts were rows ("downChart" / "upChart") before it had a chart list: a hidden one
+    // stays hidden (the list is only written when one was turned off; the new default is the download chart alone).
+    const oldRows = Array.isArray(d.hide) ? d.hide : [];
+    if (id === "network" && stored == null && (oldRows.includes("downChart") || oldRows.includes("upChart"))) {
+      stored = [!oldRows.includes("downChart") && "down", !oldRows.includes("upChart") && "up"].filter(
+        (c): c is string => !!c,
+      );
+    }
     const entry: Detail = {
       hide: [...new Set(hide)],
       badge: pick(d.badge, def.badges),

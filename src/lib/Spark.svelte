@@ -50,7 +50,7 @@
     bytes = false,
     floor = 1,
     detail = false,
-    gapMs = 3500,
+    gapMs = 8000,
     label,
     pick,
     who,
@@ -72,7 +72,8 @@
     floor?: number;
     /** Advanced view: grid lines, the scale and the peak above the chart. */
     detail?: boolean;
-    /** A longer pause between samples (the popup was closed) leaves the stretch empty instead of drawing a bridge. */
+    /** A longer pause between samples (the PC slept, measuring stopped) leaves the stretch empty instead of drawing a
+     * bridge. A busy PC can delay a sample by a few seconds; that is no reason to break the line. */
     gapMs?: number;
     /** What the series is ("RAM", "Sanal bellek", "Sıcaklık"...): shown before the scale in `detail`, in the series
      *  colour — a tile that can chart several things otherwise said only "100%". */

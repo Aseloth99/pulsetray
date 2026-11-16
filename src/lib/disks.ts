@@ -23,6 +23,23 @@ export function ownsMount(p: PhysDisk, mount: string): boolean {
   return p.letters.split(/\s+/).filter(Boolean).includes(mountLetter(mount));
 }
 
+/**
+ * How the Disk tile remembers the disk being looked at across restarts: by its drive letters ("C:"), which stay put
+ * when a USB disk comes or goes; a disk without letters by its number.
+ */
+export function diskKey(p: PhysDisk): string {
+  return p.letters ? `letters:${p.letters}` : `index:${p.index}`;
+}
+
+/** The disk a stored `diskKey` points at: the same letters, else one that still holds one of them, else none. */
+export function findDisk(list: PhysDisk[], key: string | null | undefined): PhysDisk | undefined {
+  if (!key) return undefined;
+  const exact = list.find((p) => diskKey(p) === key);
+  if (exact || !key.startsWith("letters:")) return exact;
+  const letters = key.slice("letters:".length).split(/\s+/).filter(Boolean);
+  return list.find((p) => letters.some((l) => ownsMount(p, l)));
+}
+
 /** A short name for a tab: its drive letters, else the model, else "Disk n". */
 export function tabLabel(p: PhysDisk, model: string | undefined, fallback: string): string {
   return p.letters || model || `${fallback} ${p.index}`;

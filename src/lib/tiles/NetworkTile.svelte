@@ -3,6 +3,8 @@
   import Spark from "../Spark.svelte";
   import Icon from "../Icon.svelte";
   import Kv from "../Kv.svelte";
+  import ChartStack, { type ChartDef } from "../ChartStack.svelte";
+  import { caps } from "../caps.svelte";
   import { tr } from "../tr";
   import { bytes, rate } from "../format";
   import { store, type Metrics } from "../metrics.svelte";
@@ -28,27 +30,49 @@
     { label: tr("sinceBoot"), down: m.netBootDown, up: m.netBootUp },
   ]);
   const show = (row: string) => settings.shown("network", row);
-  const badge = $derived(settings.badgeOf("network") === "link" && info?.badge ? info.badge : undefined);
+  /** Header badge: the live rates (default), their sum, today's traffic or the link. */
+  const badgeKind = $derived(caps.badge("network"));
+  const badge = $derived.by(() => {
+    if (badgeKind === "rates") return `↓ ${rate(m.netDown)} · ↑ ${rate(m.netUp)}`;
+    if (badgeKind === "total") return `↕ ${rate(m.netDown + m.netUp)}`;
+    if (badgeKind === "today") return `${tr("today")} ${bytes(m.netTodayDown + m.netTodayUp)}`;
+    if (badgeKind === "link") return info?.badge || undefined;
+    return undefined;
+  });
+  const badgeTip = $derived(
+    badgeKind === "today" ? `↓ ${bytes(m.netTodayDown)} · ↑ ${bytes(m.netTodayUp)}` : undefined,
+  );
+  // The download chart by default; upload and the total are a "+ Add chart" away (same words as the rows above).
+  const CHARTS = $derived.by<Record<string, ChartDef>>(() => ({
+    down: { series: "net.down", fmt: rate, bytes: true, floor: 1024, label: tr("download"), color: "var(--net)" },
+    up: { series: "net.up", fmt: rate, bytes: true, floor: 1024, label: tr("upload"), color: "var(--disk)" },
+    total: { series: "net.total", fmt: rate, bytes: true, floor: 1024, label: tr("netTotalRate"), color: "var(--net)" },
+  }));
   const kvShown = $derived(info != null && (show("adapter") || show("ip") || (show("linkSpeed") && !!info.speed)));
 </script>
 
-<Tile title={tr("network")} icon="network" color="var(--net)" {span} badge={adv ? badge : undefined}>
+<Tile
+  title={tr("network")}
+  icon="network"
+  color="var(--net)"
+  {span}
+  badge={adv ? badge : undefined}
+  badgeTip={adv ? badgeTip : undefined}
+  badgePick={adv ? caps.quick("network", "badge") : undefined}
+>
   {#if adv}
     <div class="stack">
-      <div class="rate">
-        <span class="lab"><Icon name="arrowDown" size={12} />{tr("download")}</span>
-        <b>{rate(m.netDown)}</b>
+      <div class="pair">
+        <div class="rate">
+          <span class="lab"><Icon name="arrowDown" size={12} />{tr("download")}</span>
+          <b>{rate(m.netDown)}</b>
+        </div>
+        <div class="rate">
+          <span class="lab"><Icon name="arrowUp" size={12} />{tr("upload")}</span>
+          <b>{rate(m.netUp)}</b>
+        </div>
       </div>
-      {#if show("downChart")}
-        <Spark data={store.series["net.down"] ?? []} times={store.times} windowSecs={settings.historySecs} color="var(--net)" fmt={rate} bytes floor={1024} height={56} detail />
-      {/if}
-      <div class="rate">
-        <span class="lab"><Icon name="arrowUp" size={12} />{tr("upload")}</span>
-        <b>{rate(m.netUp)}</b>
-      </div>
-      {#if show("upChart")}
-        <Spark data={store.series["net.up"] ?? []} times={store.times} windowSecs={settings.historySecs} color="var(--disk)" fmt={rate} bytes floor={1024} height={56} detail />
-      {/if}
+      <ChartStack tile="network" defs={CHARTS} height={56} />
     </div>
     {#if kvShown && info}
       <div class="divider"></div>
@@ -64,10 +88,12 @@
         <span></span>
         <span class="sub h"><Icon name="arrowDown" size={11} />{tr("download")}</span>
         <span class="sub h"><Icon name="arrowUp" size={11} />{tr("upload")}</span>
+        <span class="sub h">↕ {tr("total")}</span>
         {#each totals as t (t.label)}
           <span class="sub">{t.label}</span>
           <b>{bytes(t.down)}</b>
           <b>{bytes(t.up)}</b>
+          <b>{bytes(t.down + t.up)}</b>
         {/each}
       </div>
     {/if}
@@ -104,9 +130,15 @@
     font-size: 10.5px;
     white-space: nowrap;
   }
+  /* Download and upload side by side: the charts below say how they went. */
+  .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
   .totals {
     display: grid;
-    grid-template-columns: auto 1fr 1fr;
+    grid-template-columns: auto 1fr 1fr 1fr;
     gap: 5px 12px;
     font-size: 11.5px;
     align-items: center;

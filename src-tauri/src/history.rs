@@ -285,6 +285,7 @@ impl History {
         col("mem.swap", &|p| p.swap.map(|v| r2(v as f64)));
         col("net.down", &|p| Some(p.down.round()));
         col("net.up", &|p| Some(p.up.round()));
+        col("net.total", &|p| Some((p.down + p.up).round()));
         col("disk.active", &|p| Some(r2(p.disk_active as f64)));
         col("disk.read", &|p| Some(p.disk_read.round()));
         col("disk.write", &|p| Some(p.disk_write.round()));
@@ -472,6 +473,7 @@ mod tests {
         let d = h.snapshot(None, 180);
         assert_eq!(d.series["cpu.usage"][0], Some(84.4));
         assert_eq!(d.series["net.down"][0], Some(1235.0));
+        assert_eq!(d.series["net.total"][0], Some((1234.567 + m.net_up).round()), "download + upload");
     }
 
     #[test]

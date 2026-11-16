@@ -9,14 +9,15 @@ test("the default charts are the first option, and none when that is 'none'", ()
   assert.deepEqual(d.defaultCharts("memory"), ["ram"]);
   assert.deepEqual(d.defaultCharts("gpu"), ["usage"]);
   assert.deepEqual(d.defaultCharts("disk"), ["active"], "the disk tile starts with its activity chart");
-  assert.deepEqual(d.defaultCharts("network"), [], "a tile without a chart choice has none");
+  assert.deepEqual(d.defaultCharts("network"), ["down"], "the network tile starts with its download chart");
+  assert.deepEqual(d.defaultCharts("wifi"), [], "a tile without a chart choice has none");
   assert.deepEqual(d.defaultCharts("nope"), []);
 });
 
 test("cleanCharts keeps known ids once each, in the user's order, and drops 'none' and strangers", () => {
   assert.deepEqual(d.cleanCharts("cpu", ["power", "usage", "power", "none", "bogus", 7, null]), ["power", "usage"]);
   assert.deepEqual(d.cleanCharts("cpu", []), []);
-  assert.deepEqual(d.cleanCharts("network", ["usage"]), [], "a tile without charts accepts none");
+  assert.deepEqual(d.cleanCharts("wifi", ["usage"]), [], "a tile without charts accepts none");
 });
 
 test("storableCharts stores nothing for the default and [] for 'no chart at all'", () => {
@@ -151,4 +152,38 @@ test("a long window's slots stay put as new samples arrive (the line must not sh
   assert.equal(Math.max(...out.map((p) => p.v)), 100);
   // Few samples are drawn as they are.
   assert.equal(slotSamples(raw.slice(0, 100), { width: W, windowSecs: 900, maxPoints: 300, gapMs: 3500, latest: 99_000 }).length, 100);
+});
+
+test("cpu: the package power can be the badge; unreadable, it is greyed out like the power row and chart", () => {
+  const cpu = d.DETAIL.cpu;
+  assert.equal(cpu.badges[0][0], "temp", "the temperature stays the default");
+  assert.ok(cpu.badges.some(([id]) => id === "power"));
+  assert.equal(d.cleanDetails({ cpu: { hide: [], badge: "power" } }).cpu.badge, "power", "the choice is kept");
+  assert.match(read("src/lib/caps.svelte.ts"), /live\("cpu\.power", m\.cpuPowerW != null, "capCpuPower"\);/);
+  const tile = read("src/lib/tiles/CpuTile.svelte");
+  assert.match(tile, /badgeKind === "power" && m\.cpuPowerW != null\s*\? wattsNum\(m\.cpuPowerW\)/);
+});
+
+test("network: download by default, upload and the total a click away, the live rates in the badge", () => {
+  const net = d.DETAIL.network;
+  assert.deepEqual(net.charts.map(([id]) => id), ["down", "up", "total", "none"]);
+  assert.equal(net.badges[0][0], "rates", "the badge shows download and upload by default");
+  assert.ok(net.badges.some(([id]) => id === "total") && net.badges.some(([id]) => id === "today"));
+  assert.ok(!net.rows.some(([id]) => id === "downChart" || id === "upChart"), "the charts are no longer rows");
+});
+
+test("network: an old setting that hid one of the two chart rows keeps it hidden", () => {
+  assert.equal(d.cleanDetails({ network: { hide: ["upChart"], badge: null } }).network, undefined, "download alone is the default");
+  assert.deepEqual(d.cleanDetails({ network: { hide: ["downChart"], badge: null } }).network.charts, ["up"]);
+  assert.deepEqual(d.cleanDetails({ network: { hide: ["downChart", "upChart"], badge: null } }).network.charts, []);
+  assert.equal(d.cleanDetails({ network: { hide: ["ip"], badge: null } }).network.charts, null, "nothing hidden: the new default");
+  assert.deepEqual(d.cleanDetails({ network: { hide: ["upChart", "ip"], badge: null } }).network.hide, ["ip"], "old rows dropped");
+});
+
+test("network: the total rate is a chart series, live and from the backend's history", () => {
+  assert.match(read("src/lib/metrics.svelte.ts"), /put\("net\.total", m\.netDown \+ m\.netUp\);/);
+  assert.match(read("src-tauri/src/history.rs"), /col\("net\.total", &\|p\| Some\(\(p\.down \+ p\.up\)\.round\(\)\)\);/);
+  const tile = read("src/lib/tiles/NetworkTile.svelte");
+  assert.match(tile, /<ChartStack tile="network" defs=\{CHARTS\}/);
+  assert.match(tile, /badgePick=\{adv \? caps\.quick\("network", "badge"\)/);
 });
