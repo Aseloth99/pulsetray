@@ -567,7 +567,7 @@ pub fn swap_exe(current: &Path, data: &[u8]) -> Result<(), UpdErr> {
     Ok(())
 }
 
-/// After an update the previous version is kept as `.old` until the new one has run for a while
+/// After an update the previous version is kept (out of the exe's folder, see `keep_dir`) until the new one has run for a while
 /// (`confirm_healthy`). Starts in between are counted; if the new version dies before that twice, the previous
 /// version comes back and the broken one is remembered so it isn't installed again. (Release builds abort on a
 /// panic, so a version that crashes at start-up would otherwise just vanish from the tray on every PC.)
@@ -584,9 +584,47 @@ pub enum Guard {
 /// Starts before the new version counts as broken (the first one is the restart right after installing).
 const MAX_PROBATION_STARTS: u32 = 2;
 
+/// Where the previous version and the start count wait out the probation: not beside the exe, which a portable app
+/// keeps in Downloads or on the desktop, where a `PulseTray.exe.old` is just clutter. None: beside the exe after all.
+fn keep_dir() -> Option<PathBuf> {
+    let dir = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("com.pulsetray.app").join("update");
+    std::fs::create_dir_all(&dir).ok().map(|_| dir)
+}
+
+/// The previous version and the start count: in `keep` if there is one, else beside the exe.
+fn probation_files(exe: &Path, keep: Option<&Path>) -> (PathBuf, PathBuf) {
+    match keep {
+        Some(k) => (k.join("previous.exe"), k.join("boot")),
+        None => (with_suffix(exe, ".old"), with_suffix(exe, ".boot")),
+    }
+}
+
+/// Moves `from` to `to`; on another drive by copying (the original then goes with the clean-up, if it is still held).
+fn relocate(from: &Path, to: &Path) -> std::io::Result<()> {
+    let _ = std::fs::remove_file(to);
+    if std::fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    std::fs::copy(from, to)?;
+    let _ = std::fs::remove_file(from);
+    Ok(())
+}
+
+/// What `swap_exe` (also of an older version) and a rollback left beside the exe goes into `keep` at start-up.
+/// The `.skip` of a rollback moves too: it is written beside the exe because the restored, older version looks there.
+fn move_out(exe: &Path, keep: &Path) {
+    let (previous, boot) = probation_files(exe, Some(keep));
+    for (from, to) in [(".old", previous), (".boot", boot), (".skip", keep.join("skip"))] {
+        let from = with_suffix(exe, from);
+        if from.exists() {
+            let _ = relocate(&from, &to);
+        }
+    }
+}
+
 pub fn startup_guard() -> bool {
     let Ok(exe) = std::env::current_exe() else { return false };
-    if guard_at(&exe, env!("CARGO_PKG_VERSION")) != Guard::RolledBack {
+    if guard_at(&exe, keep_dir().as_deref(), env!("CARGO_PKG_VERSION")) != Guard::RolledBack {
         return false;
     }
     #[cfg(windows)]
@@ -599,24 +637,28 @@ pub fn startup_guard() -> bool {
     true
 }
 
-fn guard_at(exe: &Path, version: &str) -> Guard {
-    let old = with_suffix(exe, ".old");
-    if !old.exists() {
-        return Guard::Normal;
+fn guard_at(exe: &Path, keep: Option<&Path>, version: &str) -> Guard {
+    if let Some(k) = keep {
+        move_out(exe, k);
     }
-    let boot = with_suffix(exe, ".boot");
+    let (kept, boot) = probation_files(exe, keep);
+    // A copy that could not leave the exe's folder is still the previous version.
+    let Some(old) = [kept, with_suffix(exe, ".old")].into_iter().find(|p| p.exists()) else {
+        return Guard::Normal;
+    };
     let starts = std::fs::read_to_string(&boot).ok().and_then(|s| s.trim().parse::<u32>().ok()).unwrap_or(0) + 1;
     if starts <= MAX_PROBATION_STARTS {
         let _ = std::fs::write(&boot, starts.to_string());
         return Guard::Probation(starts);
     }
-    // This version kept dying: the running exe can be renamed, so swap the previous one back in.
+    // This version kept dying: the running exe can be renamed, so swap the previous one back in. `.bad` and `.skip`
+    // go beside the exe: the restored version may be an older one that only knows them there.
     let bad = with_suffix(exe, ".bad");
     let _ = std::fs::remove_file(&bad);
     if std::fs::rename(exe, &bad).is_err() {
         return Guard::Probation(starts);
     }
-    if std::fs::rename(&old, exe).is_err() {
+    if relocate(&old, exe).is_err() {
         let _ = std::fs::rename(&bad, exe);
         return Guard::Probation(starts);
     }
@@ -628,14 +670,17 @@ fn guard_at(exe: &Path, version: &str) -> Guard {
 /// The version that had to be rolled back on this PC (never offered again).
 fn skipped_version() -> Option<String> {
     let exe = std::env::current_exe().ok()?;
-    let v = std::fs::read_to_string(with_suffix(&exe, ".skip")).ok()?;
+    let kept = keep_dir().map(|k| k.join("skip"));
+    let v = [kept, Some(with_suffix(&exe, ".skip"))].into_iter().flatten().find_map(|p| std::fs::read_to_string(p).ok())?;
     Some(v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
-/// The running version has proven itself: drop what the last update left behind.
-pub fn confirm_healthy() {
-    if let Ok(exe) = std::env::current_exe() {
-        clean_at(&exe);
+/// The running version has proven itself: drop what the last update left behind. False while something of it is
+/// still there (a file another program holds, an antivirus scanning it): the caller tries again later.
+pub fn confirm_healthy() -> bool {
+    match std::env::current_exe() {
+        Ok(exe) => clean_at(&exe, keep_dir().as_deref()),
+        Err(_) => true,
     }
 }
 
@@ -645,10 +690,16 @@ pub fn healthy_on_exit(uptime: Duration, exiting_for_update: bool) -> bool {
     !exiting_for_update && uptime >= Duration::from_secs(10)
 }
 
-fn clean_at(exe: &Path) {
-    for suffix in [".old", ".new", ".boot", ".bad"] {
-        let _ = std::fs::remove_file(with_suffix(exe, suffix));
+fn clean_at(exe: &Path, keep: Option<&Path>) -> bool {
+    let mut files: Vec<PathBuf> = [".old", ".new", ".boot", ".bad"].iter().map(|s| with_suffix(exe, s)).collect();
+    if let Some(k) = keep {
+        let (previous, boot) = probation_files(exe, Some(k));
+        files.extend([previous, boot]);
     }
+    for f in &files {
+        let _ = std::fs::remove_file(f);
+    }
+    !files.iter().any(|f| f.exists())
 }
 
 fn with_suffix(p: &Path, suffix: &str) -> PathBuf {
@@ -748,16 +799,72 @@ mod tests {
         let exe = dir.join("pulsetray.exe");
         std::fs::write(&exe, b"new").unwrap();
         // No update happened: nothing to do.
-        assert_eq!(guard_at(&exe, "2.0.0"), Guard::Normal);
+        assert_eq!(guard_at(&exe, None, "2.0.0"), Guard::Normal);
         std::fs::write(with_suffix(&exe, ".old"), b"old").unwrap();
-        assert_eq!(guard_at(&exe, "2.0.0"), Guard::Probation(1), "restart right after installing");
-        assert_eq!(guard_at(&exe, "2.0.0"), Guard::Probation(2), "it died once; the user starts it again");
-        assert_eq!(guard_at(&exe, "2.0.0"), Guard::RolledBack, "died again: the previous version comes back");
+        assert_eq!(guard_at(&exe, None, "2.0.0"), Guard::Probation(1), "restart right after installing");
+        assert_eq!(guard_at(&exe, None, "2.0.0"), Guard::Probation(2), "it died once; the user starts it again");
+        assert_eq!(guard_at(&exe, None, "2.0.0"), Guard::RolledBack, "died again: the previous version comes back");
         assert_eq!(std::fs::read(&exe).unwrap(), b"old");
         assert_eq!(std::fs::read(with_suffix(&exe, ".bad")).unwrap(), b"new");
         assert_eq!(std::fs::read_to_string(with_suffix(&exe, ".skip")).unwrap(), "2.0.0");
         assert!(!with_suffix(&exe, ".old").exists() && !with_suffix(&exe, ".boot").exists());
-        assert_eq!(guard_at(&exe, "1.0.0"), Guard::Normal, "the restored version runs normally");
+        assert_eq!(guard_at(&exe, None, "1.0.0"), Guard::Normal, "the restored version runs normally");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_previous_version_waits_outside_the_exes_folder() {
+        let dir = std::env::temp_dir().join(format!("pt_guard_keep_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (app, keep) = (dir.join("Downloads"), dir.join("keep"));
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::create_dir_all(&keep).unwrap();
+        let exe = app.join("PulseTray.exe");
+        std::fs::write(&exe, b"new").unwrap();
+        let listing = || {
+            let mut v: Vec<String> = std::fs::read_dir(&app).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into()).collect();
+            v.sort();
+            v
+        };
+        // What swap_exe leaves (this version's or an older one's): gone from the folder at the first start.
+        std::fs::write(with_suffix(&exe, ".old"), b"old").unwrap();
+        assert_eq!(guard_at(&exe, Some(&keep), "2.0.0"), Guard::Probation(1));
+        assert_eq!(listing(), ["PulseTray.exe"], "only the exe is left beside the exe");
+        assert_eq!(std::fs::read(keep.join("previous.exe")).unwrap(), b"old");
+        assert_eq!(guard_at(&exe, Some(&keep), "2.0.0"), Guard::Probation(2));
+        assert_eq!(listing(), ["PulseTray.exe"]);
+        // Still dying: the previous version comes back from there; .bad / .skip beside it for that (older) version.
+        assert_eq!(guard_at(&exe, Some(&keep), "2.0.0"), Guard::RolledBack);
+        assert_eq!(std::fs::read(&exe).unwrap(), b"old");
+        assert_eq!(std::fs::read_to_string(with_suffix(&exe, ".skip")).unwrap(), "2.0.0");
+        assert!(!keep.join("previous.exe").exists() && !keep.join("boot").exists());
+        // A later (fixed) version tidies those up too: the skip moves out and is still honoured from there.
+        assert_eq!(guard_at(&exe, Some(&keep), "1.0.0"), Guard::Normal);
+        assert_eq!(std::fs::read_to_string(keep.join("skip")).unwrap(), "2.0.0");
+        assert!(clean_at(&exe, Some(&keep)));
+        assert_eq!(listing(), ["PulseTray.exe"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_healthy_version_reports_what_it_could_not_remove_yet() {
+        let dir = std::env::temp_dir().join(format!("pt_guard_held_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let keep = dir.join("keep");
+        std::fs::create_dir_all(&keep).unwrap();
+        let exe = dir.join("PulseTray.exe");
+        std::fs::write(&exe, b"new").unwrap();
+        std::fs::write(keep.join("previous.exe"), b"old").unwrap();
+        {
+            // Held without delete sharing (as an antivirus scan may): the clean-up says so, to be tried again.
+            use std::os::windows::fs::OpenOptionsExt;
+            // share_mode(1) = FILE_SHARE_READ only.
+            let _held = std::fs::OpenOptions::new().read(true).share_mode(1).open(keep.join("previous.exe")).unwrap();
+            assert!(!clean_at(&exe, Some(&keep)));
+        }
+        assert!(clean_at(&exe, Some(&keep)), "once it is let go");
+        assert!(!keep.join("previous.exe").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -769,9 +876,9 @@ mod tests {
         let exe = dir.join("pulsetray.exe");
         std::fs::write(&exe, b"new").unwrap();
         std::fs::write(with_suffix(&exe, ".old"), b"old").unwrap();
-        assert_eq!(guard_at(&exe, "2.0.0"), Guard::Probation(1));
-        clean_at(&exe);
-        assert_eq!(guard_at(&exe, "2.0.0"), Guard::Normal);
+        assert_eq!(guard_at(&exe, None, "2.0.0"), Guard::Probation(1));
+        assert!(clean_at(&exe, None));
+        assert_eq!(guard_at(&exe, None, "2.0.0"), Guard::Normal);
         assert!(!with_suffix(&exe, ".old").exists() && !with_suffix(&exe, ".boot").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }

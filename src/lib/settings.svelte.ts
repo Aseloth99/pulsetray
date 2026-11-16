@@ -122,6 +122,8 @@ interface Stored {
   details: Record<string, Detail>;
   /** The app list's tab when it was last switched (its "last used" opening tab). */
   procTab: string;
+  /** The disk the Disk tile's tabs were left on (`diskKey`); null = all disks. */
+  diskTab: string | null;
   historySecs: HistorySecs;
   trayIcon: TrayIcon;
   hud: HudSettings;
@@ -214,6 +216,7 @@ function defaults(): Stored {
     },
     details: {},
     procTab: "cpu",
+    diskTab: null,
     historySecs: 180,
     trayIcon: "logo",
     hud: defaultHud(),
@@ -258,6 +261,7 @@ function load(): Stored {
       tileSets,
       details: cleanDetails(raw.details),
       procTab: ["cpu", "mem", "disk", "gpu"].includes(raw.procTab) ? raw.procTab : base.procTab,
+      diskTab: typeof raw.diskTab === "string" && /^(letters|index):.{1,64}$/.test(raw.diskTab) ? raw.diskTab : null,
       historySecs: HISTORY_CHOICES.includes(raw.historySecs) ? raw.historySecs : base.historySecs,
       trayIcon: TRAY_ICONS.includes(raw.trayIcon) ? raw.trayIcon : base.trayIcon,
       hud: cleanHud(raw.hud),
@@ -285,6 +289,7 @@ class Settings {
   tileSets = $state<TileSets>({ classic: [], advanced: [] });
   details = $state<Record<string, Detail>>({});
   procTab = $state("cpu");
+  diskTab = $state<string | null>(null);
   historySecs = $state<HistorySecs>(180);
   trayIcon = $state<TrayIcon>("logo");
   hud = $state<HudSettings>(defaultHud());
@@ -320,6 +325,7 @@ class Settings {
     this.tileSets = s.tileSets;
     this.details = s.details;
     this.procTab = s.procTab;
+    this.diskTab = s.diskTab;
     this.historySecs = s.historySecs;
     this.trayIcon = s.trayIcon;
     this.hud = s.hud;
@@ -363,6 +369,7 @@ class Settings {
           tiles: this.tileSets.advanced,
           details: this.details,
           procTab: this.procTab,
+          diskTab: this.diskTab,
           historySecs: this.historySecs,
           trayIcon: this.trayIcon,
           hud: this.hud,

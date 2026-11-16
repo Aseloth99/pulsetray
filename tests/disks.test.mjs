@@ -64,3 +64,27 @@ test("the series of every disk are recorded by the UI under the names the backen
   assert.match(store, /disk\.\$\{p\.index\}\.read/);
   assert.match(store, /disk\.\$\{p\.index\}\.write/);
 });
+
+test("the Disk tile remembers its tab by drive letters, so it survives a restart and a USB disk coming or going", () => {
+  const c = disk(0, "C:");
+  const f = disk(1, "F:");
+  const blank = disk(2, "");
+  assert.equal(d.diskKey(c), "letters:C:");
+  assert.equal(d.diskKey(blank), "index:2", "a disk without letters is remembered by its number");
+  assert.equal(d.findDisk([c, f], "letters:C:"), c);
+  assert.equal(d.findDisk([disk(3, "F:"), disk(1, "C:")], "letters:C:")?.index, 1, "numbers changed, letters did not");
+  assert.equal(d.findDisk([disk(0, "C: D:")], "letters:C:")?.letters, "C: D:", "a volume added to the disk");
+  assert.equal(d.findDisk([c, f], "letters:G:"), undefined, "a disk that is gone shows all disks");
+  assert.equal(d.findDisk([c, blank], "index:2"), blank);
+  assert.equal(d.findDisk([c], null), undefined);
+});
+
+test("the chosen disk tab is kept in the settings", () => {
+  const tile = read("src/lib/tiles/DiskTile.svelte");
+  assert.match(tile, /findDisk\(phys, settings\.diskTab\)/);
+  assert.match(tile, /settings\.diskTab = key;\s+settings\.save\(\);/);
+  assert.doesNotMatch(tile, /let chosen = \$state/, "a plain component state was forgotten on every restart");
+  const s = read("src/lib/settings.svelte.ts");
+  assert.match(s, /diskTab: this\.diskTab,/, "saved");
+  assert.match(s, /this\.diskTab = s\.diskTab;/, "loaded");
+});

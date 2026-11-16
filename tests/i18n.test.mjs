@@ -69,7 +69,7 @@ const LABELS = [
   "pin", "fitContent", "autostart", "autoCheck", "autoUpdate", "checkNow", "updateNotes", "updateLater", "updateRetry", "detailBadge",
   "detailReset", "batHistory", "batHistFirst", "batHistPerYear", "batHistMade", "batHistHealth", "batHistUsage", "batHistCapacity",
   "energyLeft", "batHistCharge", "wifiNearby", "procMulti", "pickTab", "lastUsed", "pickLength", "sortedBy", "alertDisk",
-  "alertMemory", "alertTemp", "alertHealth", "alertHog", "alertTest", "downChart", "upChart", "powerChart", "chargeChart", "memCombined",
+  "alertMemory", "alertTemp", "alertHealth", "alertHog", "alertTest", "netRates", "netTotalRate", "netToday", "powerChart", "chargeChart", "memCombined",
   "diskModels", "diskHealth", "hudTitle", "hudOn", "hudLocked", "hudHideFs", "hudMenu", "trayIcon", "chartHistory", "appReveal",
   "appEnd", "appEndConfirm", "appEndConfirmN", "menuShow", "menuHide", "menuTheme", "menuQuit", "quit", "swap", "threadCount", "os",
 ];

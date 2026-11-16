@@ -1882,10 +1882,16 @@ pub fn run() {
             let data_dir = app.path().app_data_dir().ok();
             // A package an earlier run left in %TEMP% (quit while it was waiting or downloading) goes now.
             std::thread::spawn(updater::remove_stale_download);
-            // What the last update left behind (the previous version) is kept until this one has run for a minute.
+            // What the last update left behind (the previous version) is kept until this one has run for a minute;
+            // a file something still holds then (an antivirus scanning it) is tried again for a while.
             std::thread::spawn(|| {
                 std::thread::sleep(Duration::from_secs(60));
-                updater::confirm_healthy();
+                for _ in 0..30 {
+                    if updater::confirm_healthy() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_secs(60));
+                }
             });
             spawn_update_loop(handle.clone(), state.clone(), data_dir.clone());
             spawn_ping_thread(handle.clone(), state.clone());
@@ -1912,6 +1918,9 @@ pub fn run() {
                 std::thread::sleep(Duration::from_millis(500));
                 loop {
                     loops += 1;
+                    // The interval counts from here: a slow measurement (a busy PC) must not stretch the tick, or the
+                    // charts get a gap (2 s while hidden + a few seconds of measuring broke the line).
+                    let tick_start = Instant::now();
                     let visible = popup_visible(&handle);
                     // Mini gauge: hide it while a full-screen app (game, video, presentation) is in front.
                     let hud_cfg = state.hud.lock().unwrap().clone();
@@ -2016,8 +2025,7 @@ pub fn run() {
                     // Slower tick while hidden, but wake as soon as the popup opens so it fills in quickly.
                     // The mini gauge keeps the 1 s pace (without the popup's costly extras like the process list).
                     let interval = Duration::from_millis(if visible || hud_shown { 1000 } else { 2000 });
-                    let start = Instant::now();
-                    while start.elapsed() < interval {
+                    while tick_start.elapsed() < interval {
                         std::thread::sleep(Duration::from_millis(150));
                         if popup_visible(&handle) != visible {
                             break;

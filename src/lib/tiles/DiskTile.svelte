@@ -8,7 +8,7 @@
   import Icon from "../Icon.svelte";
   import OptionMenu from "../OptionMenu.svelte";
   import { rate, pct, percent, size, sizePair, namesSize, celsius, trPossessive } from "../format";
-  import { MAX_TABS, ownsMount, tabLabel, fullLabel, seriesPrefix } from "../disks";
+  import { MAX_TABS, ownsMount, tabLabel, fullLabel, seriesPrefix, diskKey, findDisk } from "../disks";
   import type { QuickPick } from "../tiledetail";
   import { settings } from "../settings.svelte";
   import { caps } from "../caps.svelte";
@@ -24,13 +24,20 @@
   const diskTab = (p: (typeof phys)[number]) => tabLabel(p, modelOfDisk(p.index), tr("disk"));
   const diskFull = (p: (typeof phys)[number]) => fullLabel(p, modelOfDisk(p.index), tr("disk"));
   const tabsOn = $derived(adv && phys.length >= 2 && settings.shown("disk", "tabs"));
-  /** The disk index being looked at; `null` = all together. A disk that is gone shows everything again. */
-  let chosen = $state<number | null>(null);
-  const sel = $derived(tabsOn && chosen != null ? phys.find((p) => p.index === chosen) : undefined);
+  /** The disk being looked at (`diskKey`, kept in the settings so it is the same after a restart); `null` = all
+   * together. A disk that is gone shows everything again. */
+  const sel = $derived(tabsOn ? findDisk(phys, settings.diskTab) : undefined);
+  function choose(p: (typeof phys)[number] | null) {
+    const key = p ? diskKey(p) : null;
+    if (settings.diskTab !== key) {
+      settings.diskTab = key;
+      settings.save();
+    }
+  }
   const diskPick = $derived<QuickPick>({
     options: [{ id: "all", label: tr("allDisks") }, ...phys.map((p) => ({ id: String(p.index), label: diskFull(p) }))],
     value: sel ? String(sel.index) : "all",
-    set: (id) => (chosen = id === "all" ? null : Number(id)),
+    set: (id) => choose(id === "all" ? null : (phys.find((p) => String(p.index) === id) ?? null)),
     tip: tr("pickDiskTip"),
   });
   const all = $derived(adv ? m.disks : m.disks.slice(0, 3));
@@ -148,9 +155,9 @@
   {#if tabsOn}
     {#if phys.length <= MAX_TABS}
       <div class="seg" role="group" aria-label={tr("pickDiskTip")}>
-        <button class:on={!sel} title={tr("allDisksTip")} onclick={() => (chosen = null)}>{tr("allDisks")}</button>
+        <button class:on={!sel} title={tr("allDisksTip")} onclick={() => choose(null)}>{tr("allDisks")}</button>
         {#each phys as p (p.index)}
-          <button class:on={sel?.index === p.index} title={diskFull(p)} onclick={() => (chosen = p.index)}>
+          <button class:on={sel?.index === p.index} title={diskFull(p)} onclick={() => choose(p)}>
             {diskTab(p)}
           </button>
         {/each}
@@ -205,7 +212,7 @@
       <span class="sub">{tr("perDisk")}</span>
       {#each phys as p (p.index)}
         {#if tabsOn}
-          <button type="button" class="pd" title={`${diskFull(p)}\n${tr("diskOpenTip")}`} onclick={() => (chosen = p.index)}>
+          <button type="button" class="pd" title={`${diskFull(p)}\n${tr("diskOpenTip")}`} onclick={() => choose(p)}>
             {@render pdRow(p)}
           </button>
         {:else}

@@ -18,16 +18,20 @@
   const show = (row: string) => settings.shown("cpu", row);
   const badgeKind = $derived(caps.badge("cpu"));
   const clockText = $derived(m.cpuFreqMhz ? ghz(m.cpuFreqMhz) : "");
+  // A temperature or power that can't be read (yet) shows the clock instead of an empty badge.
   const cpuBadge = $derived(
     badgeKind === "none"
       ? ""
       : badgeKind === "usage"
         ? percent(m.cpuUsage)
-        : badgeKind === "clock" || temp == null
-          ? clockText
-          : celsius(temp),
+        : badgeKind === "power" && m.cpuPowerW != null
+          ? wattsNum(m.cpuPowerW)
+          : badgeKind === "temp" && temp != null
+            ? celsius(temp)
+            : clockText,
   );
   const tempBadge = $derived(badgeKind === "temp" && temp != null);
+  const powerBadge = $derived(badgeKind === "power" && m.cpuPowerW != null);
   /** Where the temperature / power come from (the tooltip says how far to trust them). */
   const toolTip = (src?: string) => (src === "afterburner" ? tr("srcAfterburner") : src === "hwinfo" ? tr("srcHwinfo") : undefined);
   const tempTip = $derived(m.cpuTempSrc === "acpi" ? tr("tempAcpi") : toolTip(m.cpuTempSrc));
@@ -88,7 +92,7 @@
   {span}
   badge={adv && cpuBadge ? cpuBadge : undefined}
   badgeTone={cpuTone}
-  badgeTip={tempBadge ? (tempTip ?? "") : ""}
+  badgeTip={tempBadge ? (tempTip ?? "") : powerBadge ? (powerTip ?? "") : ""}
   badgePick={caps.quick("cpu", "badge")}
 >
   {#if adv}
