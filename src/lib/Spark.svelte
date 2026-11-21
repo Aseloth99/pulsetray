@@ -29,6 +29,7 @@
   import Icon from "./Icon.svelte";
   import OptionMenu from "./OptionMenu.svelte";
   import { slotSamples } from "./slots";
+  import { smooth } from "./motion.svelte";
   import type { QuickPick } from "./tiledetail";
 
   /** "Who caused this peak?": the apps that used the most of this resource around the hovered moment. */
@@ -129,7 +130,13 @@
   /** The average of the samples in the window (exact, also when the drawing is slotted); a handful of samples say little. */
   const average = $derived(raw.filter((p) => p.v != null).length >= 5 ? mean(raw.map((p) => p.v)) : null);
   const top = $derived(max ?? niceTop(Math.max((peak?.v as number) ?? 0, floor) * 1.08, bytes));
-  const y = (v: number) => H - 1 - (Math.min(Math.max(v, 0), top) / top) * (H - 6);
+  /** The drawn ceiling glides to a new `top` (a new peak, an old one scrolling out), so the line rescales instead of
+   *  jumping; instant with reduced motion. The scale label shows the target at once. */
+  const drawTop = smooth(() => top);
+  const y = (v: number) => {
+    const t = drawTop.current > 0 ? drawTop.current : top;
+    return H - 1 - (Math.min(Math.max(v, 0), t) / t) * (H - 6);
+  };
 
   /** Unbroken stretches of samples (a missing value or a pause breaks the line). */
   const runs = $derived.by(() => {
@@ -282,7 +289,7 @@
     <svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" aria-hidden="true">
       {#if detail}
         {#each [0.25, 0.5, 0.75] as f (f)}
-          <line class="grid" x1="0" x2={W} y1={y(top * f)} y2={y(top * f)} />
+          <line class="grid" x1="0" x2={W} y1={y(drawTop.current * f)} y2={y(drawTop.current * f)} />
         {/each}
       {/if}
       {#each runs as r, k (k)}

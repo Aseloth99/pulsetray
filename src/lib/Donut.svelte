@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { smooth } from "./motion.svelte";
+
   let {
     value,
     color,
@@ -10,6 +12,8 @@
   const r = $derived((size - stroke) / 2 - 6);
   const circ = $derived(2 * Math.PI * r);
   const v = $derived(Math.max(0, Math.min(100, value)));
+  /** The arc and the number glide to each new reading (instant with reduced motion). */
+  const shown = smooth(() => v);
   const fs = $derived(Math.max(11, Math.round(size * 0.2)));
 </script>
 
@@ -23,12 +27,12 @@
       r={r}
       stroke-width={stroke}
       stroke={color}
-      stroke-dasharray="{(circ * v) / 100} {circ}"
+      stroke-dasharray="{(circ * shown.current) / 100} {circ}"
       transform="rotate(-90 {size / 2} {size / 2})"
     />
   </svg>
   <div class="center">
-    <b style="font-size:{fs}px">{Math.round(v)}<small>%</small></b>
+    <b style="font-size:{fs}px">{Math.round(shown.current)}<small>%</small></b>
     {#if label}<span>{label}</span>{/if}
   </div>
 </div>

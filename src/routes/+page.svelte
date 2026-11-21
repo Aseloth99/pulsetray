@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
+  import { fade, fly } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import { invoke } from "@tauri-apps/api/core";
   import { emitTo, listen } from "@tauri-apps/api/event";
   import { getVersion } from "@tauri-apps/api/app";
@@ -8,6 +10,7 @@
   import Icon from "$lib/Icon.svelte";
   import Tooltip from "$lib/Tooltip.svelte";
   import { tip } from "$lib/tipstate.svelte";
+  import { ms } from "$lib/motion.svelte";
   import CpuTile from "$lib/tiles/CpuTile.svelte";
   import MemoryTile from "$lib/tiles/MemoryTile.svelte";
   import NetworkTile from "$lib/tiles/NetworkTile.svelte";
@@ -772,6 +775,12 @@
     wifi: "wifi",
     system: "system",
   };
+  /** Switching views (main, Settings, battery history, update): the new one comes in with a short fade and a small
+   *  slide. No outro: the old view goes at once, so there is never a second header / main on the page (the
+   *  fit-to-content code measures them). Instant with reduced motion. */
+  const viewIn = () => ({ duration: ms(160) });
+  const viewSlide = () => ({ y: 8, duration: ms(200), easing: cubicOut });
+
   function toggleTheme() {
     settings.theme = theme === "dark" ? "light" : "dark";
     settings.save();
@@ -838,7 +847,7 @@
     <!-- Only a pinned popup can be moved (`startMove`): on an unpinned one a press on the title started a drag, the drag
          shuffled the focus and the popup closed (as "clicked elsewhere"). -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <header class="top" onmousedown={startMove}>
+    <header class="top" onmousedown={startMove} in:fade={viewIn()}>
       <div class="brand">
         <span class="dot"></span>
         <h1>PulseTray</h1>
@@ -887,21 +896,21 @@
       >
         <Icon name={theme === "dark" ? "sun" : "moon"} />
       </button>
-      <button class="icon-btn" title={tr("settings")} onclick={() => (view = "settings")}>
+      <button class="icon-btn" use:tip={tr("settings")} aria-label={tr("settings")} onclick={() => (view = "settings")}>
         <Icon name="gear" />
       </button>
     </header>
 
     {#if update.offer}
       <!-- Opens the update screen (version, notes, the Update button); nothing is installed by this click. -->
-      <div class="notice upd">
+      <div class="notice upd" in:fade|global={viewIn()}>
         <button class="ntext" use:tip={tr("updateTip")} onclick={() => (view = "update")}>
           ↑&nbsp;&nbsp;{tr("menuUpdate").replace("{v}", update.offer.version)}
         </button>
       </div>
     {/if}
     {#if noticeShown && notice}
-      <div class="notice" class:warn={notice.level === "warn"}>
+      <div class="notice" class:warn={notice.level === "warn"} in:fade|global={viewIn()}>
         <button class="ntext" disabled={!notice.url} onclick={() => notice && notice.url && invoke("open_site", { url: notice.url })}>
           {notice.text}{#if notice.url}&nbsp;↗{/if}
         </button>
@@ -909,7 +918,7 @@
       </div>
     {/if}
 
-    <main bind:clientWidth={mainW}>
+    <main bind:clientWidth={mainW} in:fly={viewSlide()}>
       {#if !m}
         <p class="empty">{tr("waiting")}</p>
       {:else if visibleTiles.length === 0}
@@ -929,36 +938,36 @@
       {/if}
     </main>
   {:else if view === "update"}
-    <header class="top">
-      <button class="icon-btn" title={tr("back")} onclick={leaveUpdate}>
+    <header class="top" in:fade={viewIn()}>
+      <button class="icon-btn" use:tip={tr("back")} aria-label={tr("back")} onclick={leaveUpdate}>
         <Icon name="back" />
       </button>
       <h1 class="grow">{tr("updateTitle")}</h1>
     </header>
-    <main class="settings">
+    <main class="settings" in:fly={viewSlide()}>
       <div bind:this={updEl}>
         <UpdateView current={version} onLater={leaveUpdate} />
       </div>
     </main>
   {:else if view === "battery"}
-    <header class="top">
-      <button class="icon-btn" title={tr("back")} onclick={() => (view = "main")}>
+    <header class="top" in:fade={viewIn()}>
+      <button class="icon-btn" use:tip={tr("back")} aria-label={tr("back")} onclick={() => (view = "main")}>
         <Icon name="back" />
       </button>
       <h1 class="grow">{tr("batHistory")}</h1>
     </header>
-    <main class="settings">
+    <main class="settings" in:fly={viewSlide()}>
       <BatteryHistory />
     </main>
   {:else}
-    <header class="top">
-      <button class="icon-btn" title={tr("back")} onclick={() => (view = "main")}>
+    <header class="top" in:fade={viewIn()}>
+      <button class="icon-btn" use:tip={tr("back")} aria-label={tr("back")} onclick={() => (view = "main")}>
         <Icon name="back" />
       </button>
       <h1 class="grow">{tr("settings")}</h1>
     </header>
 
-    <main class="settings">
+    <main class="settings" in:fly={viewSlide()}>
       <section class="card">
         <h3>{tr("appearance")}</h3>
         <div class="row">
