@@ -5,7 +5,10 @@
 
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { flip } from "svelte/animate";
+  import { cubicOut } from "svelte/easing";
   import Tile from "../Tile.svelte";
+  import { ms } from "../motion.svelte";
   import { lower, tr } from "../tr";
   import { bytes, rate } from "../format";
   import type { Key } from "../i18n";
@@ -201,6 +204,7 @@
       <div
         class="row"
         class:menu-on={menu?.name === p.name}
+        animate:flip={{ duration: ms(250), easing: cubicOut }}
         data-extra={i >= base ? "" : undefined}
         role="listitem"
         oncontextmenu={(e) => openMenu(e, p)}

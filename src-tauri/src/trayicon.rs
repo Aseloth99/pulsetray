@@ -43,6 +43,44 @@ impl Mode {
     }
 }
 
+/// Light smoothing for the number in the tray. Raw samples (CPU above all) jitter by a few points from one reading to
+/// the next, and every change redraws the icon, so it flickered "12, 17, 9, 15". An exponential moving average with a
+/// short time constant calms that and still follows a real change within a couple of readings. The time between
+/// readings counts (1 s with the popup open, 2 s while hidden), so the lag in seconds is the same at either pace, and
+/// after a long pause (sleep) the first reading is taken as it is.
+pub struct Smoother {
+    mode: Mode,
+    value: Option<f64>,
+}
+
+impl Smoother {
+    /// Seconds after which about 63 % of a step shows (1 s readings: ~half of the change at once, 2 s: ~three quarters).
+    const TAU_SECS: f64 = 1.5;
+
+    pub const fn new() -> Smoother {
+        Smoother { mode: Mode::Logo, value: None }
+    }
+
+    /// The number to show for `raw` (0..100), measured `dt_secs` after the previous reading. `None` (the logo, no
+    /// value yet) shows nothing and forgets the past, as does a switch to another mode.
+    pub fn push(&mut self, mode: Mode, raw: Option<f64>, dt_secs: f64) -> Option<u32> {
+        let Some(raw) = raw.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 100.0)) else {
+            self.value = None;
+            return None;
+        };
+        let v = match self.value {
+            Some(prev) if self.mode == mode => {
+                let a = 1.0 - (-dt_secs.max(0.0) / Self::TAU_SECS).exp();
+                prev + (raw - prev) * a
+            }
+            _ => raw,
+        };
+        self.mode = mode;
+        self.value = Some(v);
+        Some(v.round().clamp(0.0, 100.0) as u32)
+    }
+}
+
 /// The small-icon size the taskbar uses (16 px at 100 % scaling, 24 px at 150 %).
 #[cfg(windows)]
 pub fn icon_size() -> u32 {
@@ -243,6 +281,40 @@ mod tests {
         }
         assert_eq!(Mode::parse("gpu"), Mode::Gpu);
         assert_eq!(Mode::parse("anything"), Mode::Logo);
+    }
+
+    #[test]
+    fn the_tray_number_is_smoothed_but_follows_a_real_change() {
+        let mut s = Smoother::new();
+        assert_eq!(s.push(Mode::Cpu, Some(12.0), 1.0), Some(12), "the first reading shows as it is");
+        // Jitter of a few points moves the number by less than the raw values do.
+        let a = s.push(Mode::Cpu, Some(18.0), 1.0).unwrap();
+        assert!((13..=16).contains(&a), "{a}");
+        // A real step (to 80 %) is mostly there after two 1 s readings and fully after a few more.
+        let mut v = 0;
+        let mut after = vec![];
+        for _ in 0..10 {
+            v = s.push(Mode::Cpu, Some(80.0), 1.0).unwrap();
+            after.push(v);
+        }
+        assert!(after[1] >= 60, "{after:?}");
+        assert_eq!(v, 80, "{after:?}");
+        // At the 2 s pace of a hidden popup each reading moves it further.
+        let mut h = Smoother::new();
+        h.push(Mode::Cpu, Some(0.0), 2.0);
+        assert!(h.push(Mode::Cpu, Some(100.0), 2.0).unwrap() >= 70);
+    }
+
+    #[test]
+    fn the_smoother_starts_over_after_a_pause_or_a_switch() {
+        let mut s = Smoother::new();
+        s.push(Mode::Cpu, Some(90.0), 1.0);
+        assert_eq!(s.push(Mode::Ram, Some(40.0), 1.0), Some(40), "another mode starts fresh");
+        assert_eq!(s.push(Mode::Ram, Some(10.0), 600.0), Some(10), "after a long pause the reading is taken as it is");
+        assert_eq!(s.push(Mode::Logo, None, 1.0), None);
+        assert_eq!(s.push(Mode::Ram, Some(55.0), 1.0), Some(55), "no past after the logo");
+        assert_eq!(s.push(Mode::Ram, Some(f64::NAN), 1.0), None);
+        assert_eq!(s.push(Mode::Ram, Some(250.0), 1.0), Some(100));
     }
 
     #[test]

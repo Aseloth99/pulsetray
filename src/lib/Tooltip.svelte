@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { fade } from "svelte/transition";
   import { tooltip } from "./tipstate.svelte";
+  import { ms } from "./motion.svelte";
 
   let vw = $state(0);
   let vh = $state(0);
@@ -32,6 +34,7 @@
   <div
     class="tip"
     role="tooltip"
+    transition:fade={{ duration: ms(120) }}
     bind:clientWidth={w}
     bind:clientHeight={h}
     style="left:{pos.left}px;top:{pos.top}px;visibility:{w ? 'visible' : 'hidden'}"

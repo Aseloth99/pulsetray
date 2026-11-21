@@ -222,3 +222,30 @@ button {
   opacity: 0.5;
   cursor: default;
 }
+
+/* ---- segmented controls (Settings, and the tab rows of the Processes / Disk / GPU tiles; each styles its own .seg):
+   a hover tint on the choices that aren't picked, and a keyboard focus ring. ":root" outweighs the scoped rules. */
+:root .seg button {
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+:root .seg button:hover:not(.on):not(:disabled) {
+  color: var(--text);
+  background-color: color-mix(in srgb, var(--text) 7%, transparent);
+}
+:root .seg button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--net-text) 80%, transparent);
+  outline-offset: -1px;
+}
+
+/* Windows' "Show animations" off (prefers-reduced-motion): hover / toggle transitions become instant. The value
+   tweens and view / tooltip / menu transitions check the same setting in code (lib/motion.svelte.ts). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+  }
+}

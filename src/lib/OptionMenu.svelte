@@ -1,5 +1,7 @@
 <script lang="ts">
   import { tick, type Snippet } from "svelte";
+  import { fade } from "svelte/transition";
+  import { ms } from "./motion.svelte";
   import type { QuickPick } from "./tiledetail";
 
   let {
@@ -117,6 +119,7 @@
     tabindex="-1"
     popover="manual"
     bind:this={menu}
+    transition:fade={{ duration: ms(120) }}
     onkeydown={onKey}
     style="left:{pos?.left ?? 0}px;top:{pos?.top ?? 0}px;visibility:{pos ? 'visible' : 'hidden'}"
   >

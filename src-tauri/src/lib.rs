@@ -1604,8 +1604,9 @@ fn tooltip(m: &Metrics) -> String {
     s
 }
 
-/// The number the tray icon shows in `mode` (None: the logo, or no value yet, e.g. no GPU).
-fn tray_value(mode: trayicon::Mode, m: &Metrics) -> Option<u32> {
+/// The reading behind the tray icon's number in `mode` (None: the logo, or no value yet, e.g. no GPU); it is smoothed
+/// (trayicon::Smoother) before it is drawn.
+fn tray_value(mode: trayicon::Mode, m: &Metrics) -> Option<f64> {
     let v = match mode {
         trayicon::Mode::Logo => return None,
         trayicon::Mode::Cpu => (m.cpu_cores > 0).then_some(m.cpu_usage as f64)?,
@@ -1613,7 +1614,7 @@ fn tray_value(mode: trayicon::Mode, m: &Metrics) -> Option<u32> {
         // The GPU with the most dedicated memory, like the GPU tile (the dGPU over the iGPU).
         trayicon::Mode::Gpu => m.gpus.iter().max_by_key(|g| g.vram_total).map(|g| g.usage as f64)?,
     };
-    Some(v.round().clamp(0.0, 100.0) as u32)
+    Some(v.clamp(0.0, 100.0))
 }
 
 // ------------------------------------------------------------------ app
@@ -1914,6 +1915,9 @@ pub fn run() {
                 let mut menu_hidden_since: Option<Instant> = None;
                 // What the tray icon shows now: mode and number (None = the logo).
                 let mut drawn: (trayicon::Mode, Option<u32>) = (trayicon::Mode::Logo, None);
+                // Calms the per-reading jitter of that number (a light moving average), and when the last reading was.
+                let mut tray_smooth = trayicon::Smoother::new();
+                let mut last_tick: Option<Instant> = None;
                 let mut loops: u64 = 0;
                 std::thread::sleep(Duration::from_millis(500));
                 loop {
@@ -1990,7 +1994,9 @@ pub fn run() {
                     } else {
                         held.clear();
                     }
-                    let want = (tray_mode, tray_value(tray_mode, &m));
+                    let dt = last_tick.map_or(0.0, |t| tick_start.duration_since(t).as_secs_f64());
+                    last_tick = Some(tick_start);
+                    let want = (tray_mode, tray_smooth.push(tray_mode, tray_value(tray_mode, &m), dt));
                     if want != drawn {
                         let icon = match want {
                             (mode, Some(v)) if mode != trayicon::Mode::Logo => {
