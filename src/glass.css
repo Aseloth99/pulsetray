@@ -9,8 +9,12 @@
  *    small controls fill themselves with a huge inset spread (it paints above the background, below the content and
  *    follows the border radius), so the existing components need no change; --bg is transparent for the same reason.
  *  - The window is transparent and backdrop-filter only sees what the PAGE paints, never the desktop. So the popup card
- *    (.shell) paints its own static scene (soft blobs, no animation) and the panels above it are frosted: a translucent
- *    fill + blur + saturate + edge. Nested panels (tooltip, menus) are the only other blurred things.
+ *    (.shell) paints its own static scene (soft blobs, no animation) and the panels above it are glass: a translucent
+ *    fill + edge over that scene. They are NOT blurred: the scene is so soft that a blur over it changes no visible pixel
+ *    (measured: under 2 % of a colour level on average), but every blurred panel costs the web view an extra pass on
+ *    every frame it moves, and scrolling moves all of them: 12.7 ms a frame instead of 1.6 ms, with long stalls, so a
+ *    wheel scroll stuttered even on a 144 Hz screen (one frame there is 6.9 ms). Only the floating panels (tooltip,
+ *    menus) are blurred: they sit over text and graphs, and they do not scroll.
  *  - The mini gauge and the tray menu live in transparent windows with nothing behind them to blur: they get an
  *    opaque-like gradient (the gauge: its own opacity, 50 % and up) with the same edge and top light, and no backdrop-filter.
  */
@@ -159,12 +163,11 @@
   background: var(--g-scene);
   box-shadow: var(--g-shell-edge);
 }
-/* the tiles (Tile.svelte's <section>) and the cards of Settings / Battery history / Update */
+/* the tiles (Tile.svelte's <section>) and the cards of Settings / Battery history / Update: no backdrop-filter, they
+   scroll (see the top of this file) */
 :root[data-style="glass"] [data-tile] > section,
 :root[data-style="glass"] .shell .card {
   background: var(--g-card);
-  -webkit-backdrop-filter: var(--g-blur);
-  backdrop-filter: var(--g-blur);
 }
 
 /* ------------------------------------------------------------------ controls */
