@@ -306,6 +306,39 @@ fn get(agent: &ureq::Agent, start: &str) -> Result<ureq::http::Response<ureq::Bo
     Err(UpdErr::Network("too many redirects".into()))
 }
 
+/// Pauses before the second and third attempt of a check. Some networks lose DNS or the connection for a few
+/// seconds (measured Nov 2026: one host name failed instantly for 6-18 s, then resolved again); a check that lands
+/// in such a moment asks again instead of reporting "could not check" at once.
+const RETRY_DELAYS: [Duration; 2] = [Duration::from_secs(3), Duration::from_secs(8)];
+
+/// Worth asking again in a few seconds: a network failure (DNS, connection, timeout) or the server's 5xx / 408 /
+/// 429. Never an untrusted address or another 4xx.
+pub fn is_transient(e: &UpdErr) -> bool {
+    match e {
+        UpdErr::Network(_) => true,
+        UpdErr::Http(c) => *c == 408 || *c == 429 || (500..=599).contains(c),
+        _ => false,
+    }
+}
+
+/// Runs `attempt`; after a transient failure waits the next delay and tries again. Returns the last result.
+fn with_retry<T>(
+    delays: &[Duration],
+    mut sleep: impl FnMut(Duration),
+    mut attempt: impl FnMut() -> Result<T, UpdErr>,
+) -> Result<T, UpdErr> {
+    let mut waits = delays.iter();
+    loop {
+        match attempt() {
+            Err(e) if is_transient(&e) => match waits.next() {
+                Some(d) => sleep(*d),
+                None => return Err(e),
+            },
+            done => return done,
+        }
+    }
+}
+
 /// What the server said: the offer for this machine (if there is a newer version) and the raw announcement.
 pub struct Checked {
     pub offer: Option<Offer>,
@@ -1421,5 +1454,46 @@ mod tests {
         }
         assert_eq!(arg_value(&args(&["x", "--wait-pid", "12"]), "--wait-pid"), Some("12".into()));
         assert_eq!(arg_value(&args(&["x", "--wait-pid"]), "--wait-pid"), None);
+    }
+
+    #[test]
+    fn only_passing_failures_are_retried() {
+        assert!(is_transient(&UpdErr::Network("dns error: host not found".into())));
+        for code in [408, 429, 500, 502, 503, 522, 530] {
+            assert!(is_transient(&UpdErr::Http(code)), "{code}");
+        }
+        for e in [UpdErr::Http(400), UpdErr::Http(404), UpdErr::Url, UpdErr::Checksum, UpdErr::Cancelled] {
+            assert!(!is_transient(&e), "{e:?}");
+        }
+    }
+
+    #[test]
+    fn a_check_that_hits_a_dns_hiccup_asks_again() {
+        let delays = [Duration::from_secs(3), Duration::from_secs(8)];
+        let mut slept = Vec::new();
+        let mut calls = 0;
+        let r = with_retry(&delays, |d| slept.push(d), || {
+            calls += 1;
+            if calls < 3 { Err(UpdErr::Network("dns error".into())) } else { Ok(calls) }
+        });
+        assert_eq!(r, Ok(3));
+        assert_eq!(slept, delays.to_vec());
+    }
+
+    #[test]
+    fn retries_stop_after_the_last_delay_and_at_a_lasting_error() {
+        let delays = [Duration::from_secs(3), Duration::from_secs(8)];
+        let mut calls = 0;
+        let r: Result<(), UpdErr> = with_retry(&delays, |_| {}, || {
+            calls += 1;
+            Err(UpdErr::Http(503))
+        });
+        assert_eq!((r, calls), (Err(UpdErr::Http(503)), 3));
+        let mut calls = 0;
+        let r: Result<(), UpdErr> = with_retry(&delays, |_| panic!("no wait"), || {
+            calls += 1;
+            Err(UpdErr::Http(404))
+        });
+        assert_eq!((r, calls), (Err(UpdErr::Http(404)), 1));
     }
 }
