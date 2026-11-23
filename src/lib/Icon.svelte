@@ -37,6 +37,10 @@
     arrowDown: '<path d="M12 5v14M6 13l6 6 6-6"/>',
     arrowUp: '<path d="M12 19V5M6 11l6-6 6 6"/>',
     update: '<circle cx="12" cy="12" r="9"/><path d="M12 16.5v-9M8.3 11.2L12 7.5l3.7 3.7"/>',
+    copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    eyeoff:
+      '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.7 9.7 0 0 0 5.39-1.61"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24M2 2l20 20"/>',
+    folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   };
   let { name, size = 16 }: { name: string; size?: number } = $props();
 </script>

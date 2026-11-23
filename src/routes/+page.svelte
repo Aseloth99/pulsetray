@@ -50,6 +50,8 @@
   import UpdateView from "$lib/UpdateView.svelte";
   import { update } from "$lib/update.svelte";
   import { DETAIL } from "$lib/tiledetail";
+  import TileMenu from "$lib/TileMenu.svelte";
+  import { tileCopyText, type TileAction } from "$lib/tilemenu";
 
   let view = $state<"main" | "settings" | "battery" | "update">("main");
   type Notice = { id: string; text: string; url: string; level: string };
@@ -775,6 +777,49 @@
     wifi: "wifi",
     system: "system",
   };
+
+  // ---- a tile's right-click menu (tilemenu.ts): copy what it shows, hide it, or go to Settings > Modules
+  let tileMenu = $state<{ id: TileId; x: number; y: number; el: HTMLElement } | null>(null);
+  let modulesEl = $state<HTMLElement>();
+  function openTileMenu(e: MouseEvent, id: TileId) {
+    if (e.defaultPrevented) return; // a process row opened its own menu (Open File Location / End Task)
+    e.preventDefault();
+    tileMenu = { id, x: e.clientX, y: e.clientY, el: e.currentTarget as HTMLElement };
+  }
+  async function copyText(text: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // no clipboard permission in this webview: the old way still works inside a user action
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      area.remove();
+      return ok;
+    }
+  }
+  async function tileAction(action: TileAction) {
+    const menu = tileMenu;
+    if (!menu) return;
+    if (action === "copy") {
+      // the unselected disk / GPU / sort tabs and "Add chart" are controls, not readings; the selected tab says what is shown
+      const skip = [...menu.el.querySelectorAll<HTMLElement>(".seg button:not(.on), [data-nocopy]")].map((b) => b.innerText);
+      const ok = await copyText(tileCopyText(menu.el.innerText, skip));
+      return ok ? { msg: tr("tileCopied") } : { msg: tr("tileCopyFailed"), bad: true };
+    }
+    if (action === "hide") {
+      settings.toggle(settings.advanced ? "advanced" : "classic", menu.id);
+      return;
+    }
+    view = "settings";
+    await tick();
+    modulesEl?.scrollIntoView({ block: "start" });
+  }
+
   /** Switching views (main, Settings, battery history, update): the new one comes in with a short fade and a small
    *  slide. No outro: the old view goes at once, so there is never a second header / main on the page (the
    *  fit-to-content code measures them). Instant with reduced motion. */
@@ -928,7 +973,7 @@
           {#each columns as col, ci (ci)}
             <div class="col">
               {#each col as id (id)}
-                <div data-tile={id}>
+                <div data-tile={id} role="presentation" oncontextmenu={(e) => openTileMenu(e, id)}>
                   {@render tileOf(id, m, adv, procExtra, () => (view = "battery"))}
                 </div>
               {/each}
@@ -1047,7 +1092,7 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" bind:this={modulesEl}>
         <div class="row">
           <h3>{tr("modules")}</h3>
           <div class="seg" role="tablist" aria-label={tr("modules")}>
@@ -1448,6 +1493,16 @@
 </div>
 
 <Tooltip />
+
+{#if tileMenu && view === "main"}
+  <TileMenu
+    x={tileMenu.x}
+    y={tileMenu.y}
+    title={tr(tileKey[tileMenu.id])}
+    onaction={tileAction}
+    onclose={() => (tileMenu = null)}
+  />
+{/if}
 
 <style>
   .notice {

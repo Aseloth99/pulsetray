@@ -8,6 +8,7 @@
   import { flip } from "svelte/animate";
   import { cubicOut } from "svelte/easing";
   import Tile from "../Tile.svelte";
+  import Icon from "../Icon.svelte";
   import { ms } from "../motion.svelte";
   import { lower, tr } from "../tr";
   import { bytes, rate } from "../format";
@@ -242,9 +243,11 @@
       <p class="msg" class:bad={menu.bad}>{menu.msg}</p>
     {:else}
       <button role="menuitem" disabled={apps.info[menu.name] != null && !apps.info[menu.name].path} onclick={reveal}>
+        <Icon name="folder" size={14} />
         {tr("appReveal")}
       </button>
       <button role="menuitem" class="danger" class:confirm={menu.confirm} onclick={endTask}>
+        <Icon name="x" size={14} />
         {menu.confirm
           ? menu.count > 1
             ? tr("appEndConfirmN").replace("{n}", String(menu.count))
@@ -357,6 +360,9 @@
     font-size: 10.5px;
   }
   .ctx button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     text-align: left;
     padding: 6px 8px;
     border-radius: 8px;
@@ -371,8 +377,18 @@
     color: var(--muted);
     opacity: 0.6;
   }
+  .ctx button :global(svg) {
+    flex: none;
+    color: var(--disk);
+  }
+  .ctx button:disabled :global(svg) {
+    color: var(--muted);
+  }
   .ctx button.danger {
     color: var(--bad-text);
+  }
+  .ctx button.danger :global(svg) {
+    color: var(--danger);
   }
   .ctx button.confirm {
     background: color-mix(in srgb, var(--danger) 16%, transparent);

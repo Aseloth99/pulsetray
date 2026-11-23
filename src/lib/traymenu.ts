@@ -8,6 +8,7 @@
  */
 import type { Key } from "./i18n";
 import { THEME_MODES, type ThemeMode } from "./prefs";
+import type { Tone } from "./tilemenu";
 
 export type MenuAction =
   | "update"
@@ -33,6 +34,8 @@ export type MenuRow =
       /** Shows a check mark (the mini gauge being on, the theme in use). */
       check?: boolean;
       danger?: boolean;
+      /** Icon colour by meaning, as in the other apps' menus (green update, blue show, violet settings, red exit). */
+      tone?: Tone;
       /** The Theme row: a click opens / closes the list instead of choosing something. */
       expandable?: boolean;
       expanded?: boolean;
@@ -56,11 +59,11 @@ const THEME_ICON: Record<ThemeMode, string> = { system: "system", dark: "moon", 
 export function menuRows(s: MenuState): MenuRow[] {
   const rows: MenuRow[] = [];
   if (s.offer) {
-    rows.push({ kind: "item", id: "update", icon: "update", label: "menuUpdate", version: s.offer, strong: true });
+    rows.push({ kind: "item", id: "update", icon: "update", label: "menuUpdate", version: s.offer, strong: true, tone: "bat" });
     rows.push({ kind: "sep" });
   }
-  rows.push({ kind: "item", id: s.popupOpen ? "hide" : "show", icon: "panel", label: s.popupOpen ? "menuHide" : "menuShow" });
-  rows.push({ kind: "item", id: "settings", icon: "gear", label: "settings" });
+  rows.push({ kind: "item", id: s.popupOpen ? "hide" : "show", icon: "panel", label: s.popupOpen ? "menuHide" : "menuShow", tone: "cpu" });
+  rows.push({ kind: "item", id: "settings", icon: "gear", label: "settings", tone: "mem" });
   rows.push({ kind: "item", id: "theme", icon: "contrast", label: "menuTheme", expandable: true, expanded: s.themeOpen });
   if (s.themeOpen) {
     for (const mode of THEME_MODES) {
@@ -68,8 +71,8 @@ export function menuRows(s: MenuState): MenuRow[] {
     }
   }
   rows.push({ kind: "sep" });
-  rows.push({ kind: "item", id: "hud", icon: "gauge", label: "hudMenu", check: s.hudOn });
+  rows.push({ kind: "item", id: "hud", icon: "gauge", label: "hudMenu", check: s.hudOn, tone: "net" });
   rows.push({ kind: "sep" });
-  rows.push({ kind: "item", id: "quit", icon: "power", label: "menuQuit", danger: true });
+  rows.push({ kind: "item", id: "quit", icon: "power", label: "menuQuit", danger: true, tone: "danger" });
   return rows;
 }

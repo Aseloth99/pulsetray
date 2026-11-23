@@ -62,7 +62,7 @@
 {#if add}
   <OptionMenu pick={add} align="start">
     {#snippet trigger({ toggle, open })}
-      <button type="button" class="add" aria-haspopup="menu" aria-expanded={open} title={add.tip} onclick={toggle}>
+      <button type="button" class="add" data-nocopy aria-haspopup="menu" aria-expanded={open} title={add.tip} onclick={toggle}>
         <Icon name="plus" size={10} />{tr("addChart")}
       </button>
     {/snippet}

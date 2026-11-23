@@ -1,6 +1,6 @@
 [package]
 name = "pulsetray"
-version = "1.0.5"
+version = "1.0.6"
 description = "Lightweight system monitor for the Windows tray"
 license = "MIT"
 authors = ["PulseTray"]

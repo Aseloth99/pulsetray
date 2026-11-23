@@ -149,6 +149,8 @@
         class:strong={r.strong}
         class:sub={r.sub}
         class:open={r.expanded}
+        class:toned={r.tone !== undefined}
+        style={r.tone ? `--tone: var(--${r.tone})` : undefined}
         data-id={r.id}
         role={r.sub ? "menuitemradio" : r.id === "hud" ? "menuitemcheckbox" : "menuitem"}
         aria-checked={r.sub || r.id === "hud" ? r.check === true : undefined}
@@ -250,6 +252,12 @@
   .item.danger:hover :global(svg),
   .item.danger:focus-visible :global(svg) {
     color: var(--bad-text);
+  }
+  /* Coloured by meaning (traymenu.ts), also under the mouse; the Theme rows stay neutral. */
+  .item.toned :global(svg),
+  .item.toned:hover :global(svg),
+  .item.toned:focus-visible :global(svg) {
+    color: var(--tone);
   }
   .item:active {
     box-shadow: var(--inset-sm);

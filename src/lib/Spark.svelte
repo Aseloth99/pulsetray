@@ -24,11 +24,13 @@
   import { invoke } from "@tauri-apps/api/core";
   import { tr } from "./tr";
   import type { Key } from "./i18n";
-  import { bytes as fmtBytes, rate, mean } from "./format";
+  import { bytes as fmtBytes, rate } from "./format";
   import { tooltip, tip } from "./tipstate.svelte";
   import Icon from "./Icon.svelte";
   import OptionMenu from "./OptionMenu.svelte";
   import { slotSamples } from "./slots";
+  import { nearestIndex, xOfTime } from "./nearest";
+  import { hoverSync, publishHover } from "./hoversync.svelte";
   import { smooth } from "./motion.svelte";
   import type { QuickPick } from "./tiledetail";
 
@@ -127,8 +129,18 @@
     for (const p of raw) if (p.v != null && (best === null || p.v >= (best.v as number))) best = p;
     return best;
   });
-  /** The average of the samples in the window (exact, also when the drawing is slotted); a handful of samples say little. */
-  const average = $derived(raw.filter((p) => p.v != null).length >= 5 ? mean(raw.map((p) => p.v)) : null);
+  /** The average of the samples in the window (exact, also when the drawing is slotted); a handful of samples say little.
+   *  One pass, no copies of the window (it runs for every chart on every sample). */
+  const average = $derived.by(() => {
+    let sum = 0;
+    let n = 0;
+    for (const p of raw) {
+      if (p.v == null || !Number.isFinite(p.v)) continue;
+      sum += p.v;
+      n++;
+    }
+    return n >= 5 ? sum / n : null;
+  });
   const top = $derived(max ?? niceTop(Math.max((peak?.v as number) ?? 0, floor) * 1.08, bytes));
   /** The drawn ceiling glides to a new `top` (a new peak, an old one scrolling out), so the line rescales instead of
    *  jumping; instant with reduced motion. The scale label shows the target at once. */
@@ -160,19 +172,20 @@
   let hoverX = $state<number | null>(null);
   const hovered = $derived.by(() => {
     if (hoverX === null || !fmt) return null;
-    const target = hoverX * W;
-    let best: P | null = null;
-    let dist = Infinity;
-    for (const p of pts) {
-      if (p.v == null) continue;
-      const d = Math.abs(p.x - target);
-      if (d < dist) {
-        dist = d;
-        best = p;
-      }
-    }
     // Over an empty stretch (the popup was closed then) there is nothing to read.
-    return best && dist <= W * 0.04 ? best : null;
+    const i = nearestIndex(pts, hoverX * W, W * 0.04);
+    return i >= 0 ? pts[i] : null;
+  });
+
+  // ---- the other charts follow the pointer (hoversync): the same moment, their own reading, a dashed line
+  const me = {};
+  $effect(() => publishHover(me, hovered?.t ?? null));
+  $effect(() => () => publishHover(me, null));
+  const synced = $derived.by(() => {
+    const t = hoverSync.t;
+    if (t == null || hoverSync.owner === me || hoverX !== null || !times || !latest) return null;
+    const i = nearestIndex(pts, xOfTime(t, latest, windowSecs, W), W * 0.04);
+    return i >= 0 ? pts[i] : null;
   });
 
   function ago(p: P): string {
@@ -269,6 +282,8 @@
         >{/if}</span>
       {#if hovered}
         <span class="read"><b>{fmt(hovered.v as number)}</b> · {ago(hovered)}</span>
+      {:else if synced}
+        <span class="read"><b>{fmt(synced.v as number)}</b> · {ago(synced)}</span>
       {:else if peak && (peak.v as number) > 0}
         <span class="read wrap"
           ><span class="main">{#if average != null}{tr("avgShort")} <b>{fmt(average)}</b>{" · "}{/if}{tr("peak")} <b>{fmt(peak.v as number)}</b></span
@@ -302,6 +317,9 @@
     {#if hovered}
       <i class="cross" style="left:{(hovered.x / W) * 100}%"></i>
       <i class="dot" style="left:{(hovered.x / W) * 100}%;top:{(y(hovered.v as number) / H) * 100}%;border-color:{color}"></i>
+    {:else if synced}
+      <i class="cross sync" style="left:{(synced.x / W) * 100}%"></i>
+      <i class="dot" style="left:{(synced.x / W) * 100}%;top:{(y(synced.v as number) / H) * 100}%;border-color:{color}"></i>
     {:else if detail && peak && (peak.v as number) > 0}
       <i class="dot peak" style="left:{(peak.x / W) * 100}%;top:{(y(peak.v as number) / H) * 100}%;background:{color}"></i>
     {/if}
@@ -434,6 +452,14 @@
     width: 1px;
     background: color-mix(in srgb, var(--muted) 70%, transparent);
     pointer-events: none;
+  }
+  /* mirrored from the chart under the pointer: dashed, like a guide */
+  .cross.sync {
+    background: repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--muted) 75%, transparent) 0 3px,
+      transparent 3px 6px
+    );
   }
   .dot {
     position: absolute;
