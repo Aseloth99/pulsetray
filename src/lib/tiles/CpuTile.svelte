@@ -10,6 +10,7 @@
   import { settings } from "../settings.svelte";
   import { tooltip, tip } from "../tipstate.svelte";
   import { caps } from "../caps.svelte";
+  import { watchLeave } from "../leaveguard";
 
   let { m, adv, span }: { m: Metrics; adv: boolean; span: number } = $props();
   const hw = $derived(store.hw);
@@ -70,6 +71,11 @@
   });
   $effect(() => () => {
     if (ownsTip) tooltip.hide();
+  });
+  // the pointer can leave the window without a pointerleave (leaveguard.ts)
+  const onCore = $derived(coreIdx !== null);
+  $effect(() => {
+    if (onCore) return watchLeave(() => (coreIdx = null));
   });
 
   const cache = $derived(

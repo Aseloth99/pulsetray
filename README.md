@@ -35,6 +35,12 @@ PulseTray sits in the tray and costs next to nothing until you open it. A click 
 - **Two visual styles** (Neumorphic and Glassmorphic), light, dark or system theme, English and Turkish.
 - **Self-updating:** daily check, download with progress, SHA-256 verification, quiet restart, automatic roll-back when a new version keeps failing at start-up.
 
+<p align="center">
+  <img alt="The PulseTray panel in the Glassmorphic style with the dark theme, Advanced mode, sample data" src="docs/images/pulsetray-dark-cam.webp" width="720">
+  <br>
+  <sub>The Glassmorphic style with the dark theme (Settings > Appearance > Style).</sub>
+</p>
+
 ## What it shows
 
 | Tile | Classic view | Advanced view adds |

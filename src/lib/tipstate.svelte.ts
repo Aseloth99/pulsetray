@@ -1,3 +1,5 @@
+import { watchLeave } from "./leaveguard";
+
 class TooltipState {
   text = $state("");
   open = $state(false);
@@ -5,15 +7,24 @@ class TooltipState {
   /** Open above the element when there is room (chart readouts: the text below the chart stays visible). */
   above = $state(false);
 
+  /** Cancels the leave watch of the open tooltip (the pointer can leave the window unseen; see leaveguard.ts). */
+  private unwatch: (() => void) | null = null;
+
   show(text: string, r: DOMRect, above = false) {
     this.text = text;
     this.above = above;
     this.rect = { left: r.left, top: r.top, width: r.width, height: r.height };
     this.open = true;
+    this.unwatch ??= watchLeave(() => {
+      this.unwatch = null;
+      this.hide();
+    });
   }
 
   hide() {
     this.open = false;
+    this.unwatch?.();
+    this.unwatch = null;
   }
 }
 

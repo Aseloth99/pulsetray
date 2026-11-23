@@ -31,6 +31,7 @@
   import { slotSamples } from "./slots";
   import { nearestIndex, xOfTime } from "./nearest";
   import { hoverSync, publishHover } from "./hoversync.svelte";
+  import { watchLeave } from "./leaveguard";
   import { smooth } from "./motion.svelte";
   import type { QuickPick } from "./tiledetail";
 
@@ -175,6 +176,11 @@
     // Over an empty stretch (the popup was closed then) there is nothing to read.
     const i = nearestIndex(pts, hoverX * W, W * 0.04);
     return i >= 0 ? pts[i] : null;
+  });
+  // the pointer can leave the window without a pointerleave (leaveguard.ts): then the line and readout must go too
+  const hovering = $derived(hoverX !== null);
+  $effect(() => {
+    if (hovering) return watchLeave(() => (hoverX = null));
   });
 
   // ---- the other charts follow the pointer (hoversync): the same moment, their own reading, a dashed line

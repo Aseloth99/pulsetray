@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { watchLeave } from "./leaveguard";
+
   /**
    * A line over calendar time (days to years), for the battery history: points can be far apart and unevenly
    * spaced, so the x axis is real time and the ends are labelled with dates. Hover reads a point out above the chart.
@@ -55,6 +57,11 @@
     let best = points[0];
     for (const p of points) if (Math.abs(p.t - target) < Math.abs(best.t - target)) best = p;
     return best;
+  });
+  // the pointer can leave the window without a pointerleave (leaveguard.ts)
+  const hovering = $derived(hoverX !== null);
+  $effect(() => {
+    if (hovering) return watchLeave(() => (hoverX = null));
   });
   function onMove(e: PointerEvent) {
     if (!el) return;

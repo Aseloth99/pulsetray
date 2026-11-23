@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { watchLeave } from "./leaveguard";
+
   /** Hours per day, two stacked parts (on battery, on AC); hover reads a day out above the bars. */
   type Day = { label: string; a: number; b: number };
   let {
@@ -22,6 +24,11 @@
   const top = $derived(Math.max(1, ...days.map((d) => d.a + d.b)));
   let hover = $state<number | null>(null);
   const h = $derived(hover === null ? null : days[hover]);
+  // the pointer can leave the window without a pointerleave (leaveguard.ts)
+  const hovering = $derived(hover !== null);
+  $effect(() => {
+    if (hovering) return watchLeave(() => (hover = null));
+  });
 </script>
 
 <div class="chart">

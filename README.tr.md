@@ -36,6 +36,12 @@ PulseTray tepside durur ve siz açana kadar neredeyse hiçbir şeye mal olmaz. S
 - **İki görsel tasarım** (Neumorfik ve Cam), açık, koyu ya da sistem teması; Türkçe ve İngilizce.
 - **Kendini günceller:** günlük denetim, ilerlemeli indirme, SHA-256 doğrulaması, sessiz yeniden başlatma; yeni sürüm açılışta sürekli düşerse otomatik geri dönüş.
 
+<p align="center">
+  <img alt="PulseTray paneli, Cam tasarımı ve koyu temayla, Gelişmiş modda, örnek verilerle" src="docs/images/pulsetray-dark-cam.webp" width="720">
+  <br>
+  <sub>Cam tasarımı, koyu temayla (Ayarlar > Görünüm > Tasarım).</sub>
+</p>
+
 ## Neler gösterir
 
 | Kutucuk | Klasik görünüm | Gelişmiş modda ek olarak |
