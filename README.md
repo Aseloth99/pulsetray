@@ -99,6 +99,8 @@ All of it works without administrator rights and with what Windows itself provid
 
 Installer and portable executable: **https://macik.com.tr**
 
+Each [GitHub release](https://github.com/Aseloth99/pulsetray/releases/latest) also carries an exe built from this repository's source at that version's tag. It takes its updates from the same channel as the official build.
+
 Windows 10 or 11 and the WebView2 runtime are required. The installer sets PulseTray up per user (no administrator rights) and fetches the WebView2 runtime if it is missing.
 
 ### From source

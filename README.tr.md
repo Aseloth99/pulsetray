@@ -99,6 +99,8 @@ Hepsi yönetici hakkı olmadan, yalnızca Windows'un kendi sunduklarıyla çalı
 
 Kurulum dosyası ve taşınabilir çalıştırılabilir dosya: **https://macik.com.tr**
 
+Her [GitHub sürümünde](https://github.com/Aseloth99/pulsetray/releases/latest) o sürümün etiketindeki kaynaktan derlenmiş bir exe de bulunur. Güncellemelerini resmî sürümle aynı kanaldan alır.
+
 Windows 10 ya da 11 ve WebView2 çalışma zamanı gerekir. Kurulum dosyası PulseTray'i kullanıcı başına kurar (yönetici hakkı gerekmez); WebView2 yoksa onu da indirir.
 
 ### Kaynaktan
