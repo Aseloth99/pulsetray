@@ -55,3 +55,27 @@ test("charts mirror the hovered moment: the owner publishes it, the others read 
   // the tooltip and the "who used the most" question stay with the chart under the pointer
   assert.doesNotMatch(spark, /const h = synced/);
 });
+
+test("the chart that published the moment can clear it again (compiled with real runes: the owner is not a state proxy)", async () => {
+  // A deep $state would keep a proxy of the chart's object: `===` never matched, the moment was never cleared and every
+  // chart kept its dashed line after the pointer left (up to 1.0.9). Compiled here exactly as the app gets it.
+  const { compileModule } = await import("svelte/compiler");
+  const { stripTypeScriptTypes } = await import("node:module");
+  const src = stripTypeScriptTypes(read("src/lib/hoversync.svelte.ts"));
+  let { code } = compileModule(src, { generate: "client", filename: "hoversync.svelte.js" }).js;
+  code = code.replace(/(from\s+)(["'])(svelte\/[^"']+)\2/g, (_, from, q, spec) => `${from}${q}${import.meta.resolve(spec)}${q}`);
+  const { hoverSync, publishHover } = await import(`data:text/javascript,${encodeURIComponent(code)}`);
+
+  const a = {};
+  const b = {};
+  publishHover(a, 1000);
+  assert.equal(hoverSync.owner, a, "the owner is the chart's own object");
+  assert.equal(hoverSync.t, 1000);
+  publishHover(b, 2000); // the pointer moved straight onto another chart
+  publishHover(a, null); // the first chart's leave comes after: it no longer owns the moment
+  assert.equal(hoverSync.owner, b);
+  assert.equal(hoverSync.t, 2000);
+  publishHover(b, null); // the pointer left the charts
+  assert.equal(hoverSync.owner, null);
+  assert.equal(hoverSync.t, null);
+});
