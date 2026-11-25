@@ -350,7 +350,7 @@ pub struct Checked {
 pub fn check(current: &str) -> Result<Checked, String> {
     let agent = agent(CHECK_BODY);
     let url = format!("{CHECK_URL}?appName={APP_ID}&currentVersion={current}");
-    let body: Value = get(&agent, &url)
+    let body: Value = with_retry(&RETRY_DELAYS, std::thread::sleep, || get(&agent, &url))
         .map_err(|e| e.to_string())?
         .body_mut()
         .read_json()
