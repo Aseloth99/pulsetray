@@ -339,11 +339,15 @@
     gap: 3px;
     min-width: 0;
   }
+  /* A fixed height: the row shows the peak, the hovered reading, the mirrored one or nothing, and those are a third
+     of a pixel apart. Entering or leaving a chart switches every chart's row at once, so the tiles changed height,
+     the popup refitted (set_popup_height) and the transparent window flashed empty or white while it resized. */
   .labels {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     gap: 8px;
+    height: 1.4em;
     font-size: 10px;
     color: var(--muted);
     min-width: 0;

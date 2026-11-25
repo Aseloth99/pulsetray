@@ -472,23 +472,29 @@ fn resize_popup(window: WebviewWindow, state: AppStateRef<'_>, width: f64, heigh
         w = w.min(mon.size().width as f64 / scale);
         h = h.min(mon.size().height as f64 / scale);
     }
-    let before = window.outer_position().ok().zip(window.outer_size().ok());
-    let _ = window.set_size(LogicalSize::new(w, h));
+    let size = LogicalSize::new(w, h);
     // The size follows the mode (classic / advanced) or a fit, not the user's hand: the window must not end up
-    // floating mid-screen because its top-left corner stayed put while the bottom or right edge moved.
-    let Some((pos, old)) = before else { return };
+    // floating mid-screen because its top-left corner stayed put while the bottom or right edge moved. So the new
+    // position is worked out first and the window is moved and resized together (`move_and_resize`).
+    let Some((pos, old)) = window.outer_position().ok().zip(window.outer_size().ok()) else {
+        let _ = window.set_size(size);
+        return;
+    };
     // Still where the app put it (next to the tray icon): place it by the same rule for the new size.
     let auto = *state.auto_pos.lock().unwrap();
     let anchor = *state.anchor.lock().unwrap();
     if let (Some(auto), Some(anchor)) = (auto, anchor) {
         if (auto.x - pos.x).abs() <= 4 && (auto.y - pos.y).abs() <= 4 {
-            place_popup(&window, &state, anchor, true);
+            place_popup(&window, &state, anchor, PopupSize::Exactly(size));
             return;
         }
     }
-    let Ok(new) = window.outer_size() else { return };
+    let new: PhysicalSize<u32> = size.to_physical(window.scale_factor().unwrap_or(1.0));
     let centre = (pos.x as f64 + old.width as f64 / 2.0, pos.y as f64 + old.height as f64 / 2.0);
-    let Ok(Some(mon)) = window.app_handle().monitor_from_point(centre.0, centre.1) else { return };
+    let Ok(Some(mon)) = window.app_handle().monitor_from_point(centre.0, centre.1) else {
+        let _ = window.set_size(size);
+        return;
+    };
     let wa = mon.work_area();
     let area = (wa.position.x, wa.position.y, wa.position.x + wa.size.width as i32, wa.position.y + wa.size.height as i32);
     let tol = ((MARGIN + 16.0) * mon.scale_factor()).round() as i32;
@@ -501,9 +507,7 @@ fn resize_popup(window: WebviewWindow, state: AppStateRef<'_>, width: f64, heigh
         tol,
         anchor_below,
     );
-    if want != (pos.x, pos.y) {
-        let _ = window.set_position(PhysicalPosition::new(want.0, want.1));
-    }
+    move_and_resize(&window, PhysicalPosition::new(want.0, want.1), new, mon.scale_factor());
 }
 
 /// Top-left corner for a window that changes from the `old` to the `new` size (all physical pixels, `area` =
@@ -679,7 +683,7 @@ fn set_popup_height(window: WebviewWindow, state: AppStateRef<'_>, height: u32) 
     state.refit_height.store(false, Ordering::Relaxed);
     let anchor = *state.anchor.lock().unwrap();
     if let Some(a) = anchor {
-        place_popup(&window, &state, a, false);
+        place_popup(&window, &state, a, PopupSize::Fit);
     }
 }
 
@@ -697,7 +701,7 @@ fn set_popup_width(window: WebviewWindow, state: AppStateRef<'_>, width: u32) {
     // Copy the value out: holding the lock across window calls could deadlock against the main thread.
     let anchor = *state.anchor.lock().unwrap();
     if let Some(a) = anchor {
-        place_popup(&window, &state, a, false);
+        place_popup(&window, &state, a, PopupSize::Fit);
     }
 }
 
@@ -719,7 +723,7 @@ fn set_pinned(window: WebviewWindow, state: AppStateRef<'_>, pinned: bool) {
     } else if was && window.is_visible().unwrap_or(false) {
         let anchor = *state.anchor.lock().unwrap();
         if let Some(a) = anchor {
-            place_popup(&window, &state, a, size_is_fixed(&state));
+            place_popup(&window, &state, a, if size_is_fixed(&state) { PopupSize::Keep } else { PopupSize::Fit });
         }
     }
 }
@@ -764,11 +768,21 @@ fn position_popup(window: &WebviewWindow, state: &AppState, anchor: Option<(f64,
         return;
     };
     *state.anchor.lock().unwrap() = Some(anchor);
-    place_popup(window, state, anchor, keep_size);
+    place_popup(window, state, anchor, if keep_size { PopupSize::Keep } else { PopupSize::Fit });
 }
 
-/// `keep_size` = leave the window size alone (a pinned popup keeps what the user chose).
-fn place_popup(window: &WebviewWindow, state: &AppState, (ax, ay): (f64, f64), keep_size: bool) {
+/// The size `place_popup` gives the window.
+#[derive(Clone, Copy)]
+enum PopupSize {
+    /// What the content asked for (`popup_width` x `popup_height`), shrunk to small work areas.
+    Fit,
+    /// The size it has now (a pinned popup keeps what the user chose).
+    Keep,
+    /// This size (a pinned popup that follows the mode or a fit).
+    Exactly(LogicalSize<f64>),
+}
+
+fn place_popup(window: &WebviewWindow, state: &AppState, (ax, ay): (f64, f64), size: PopupSize) {
     let Ok(Some(mon)) = window.app_handle().monitor_from_point(ax, ay) else {
         return;
     };
@@ -779,32 +793,70 @@ fn place_popup(window: &WebviewWindow, state: &AppState, (ax, ay): (f64, f64), k
     let (left, top) = (wa.position.x as f64, wa.position.y as f64);
     let (right, bottom) = (left + wa.size.width as f64, top + wa.size.height as f64);
 
-    let (w, h) = if keep_size {
-        match window.outer_size() {
+    let (w, h) = match size {
+        PopupSize::Keep => match window.outer_size() {
             Ok(s) => (s.width as f64, s.height as f64),
             Err(_) => return,
+        },
+        PopupSize::Exactly(s) => (s.width * scale, s.height * scale),
+        PopupSize::Fit => {
+            // Requested size, shrunk to fit small work areas (e.g. 1366x768 laptops).
+            let want_w = state.popup_width.load(Ordering::Relaxed) as f64 * scale;
+            let want_h = state.popup_height.load(Ordering::Relaxed) as f64 * scale;
+            (
+                want_w.min(wa.size.width as f64 - 2.0 * margin),
+                want_h.min(wa.size.height as f64 - 2.0 * margin),
+            )
         }
-    } else {
-        // Requested size, shrunk to fit small work areas (e.g. 1366x768 laptops).
-        let want_w = state.popup_width.load(Ordering::Relaxed) as f64 * scale;
-        let want_h = state.popup_height.load(Ordering::Relaxed) as f64 * scale;
-        (
-            want_w.min(wa.size.width as f64 - 2.0 * margin),
-            want_h.min(wa.size.height as f64 - 2.0 * margin),
-        )
     };
     let x = (ax - w / 2.0).clamp(left + margin, (right - w - margin).max(left + margin));
     let y = if ay > (top + bottom) / 2.0 { bottom - h - margin } else { top + margin }.max(top + margin);
     let pos = PhysicalPosition::new(x.round() as i32, y.round() as i32);
 
-    // Move first (so the window is on the target monitor and any DPI change has been applied), then size it
-    // in physical pixels, then settle the final position.
-    let _ = window.set_position(pos);
-    if !keep_size {
-        let _ = window.set_size(PhysicalSize::new(w.round().max(1.0) as u32, h.round().max(1.0) as u32));
-        let _ = window.set_position(pos);
+    match size {
+        PopupSize::Keep => {
+            let _ = window.set_position(pos);
+        }
+        _ => {
+            let size = PhysicalSize::new(w.round().max(1.0) as u32, h.round().max(1.0) as u32);
+            move_and_resize(window, pos, size, scale);
+        }
     }
     *state.auto_pos.lock().unwrap() = Some(pos);
+}
+
+/// Moves and resizes the window in one `SetWindowPos`. As two calls (a move, then a resize) Windows can compose a
+/// frame in between: the popup sits at its new top with the old height (the card jumps up or down by the change),
+/// and the webview has to follow two changes instead of one. One call is only right when the window already has
+/// the target monitor's scale: arriving on a monitor with another scale makes Windows rescale the window
+/// (WM_DPICHANGED), so then it moves there first, is sized in that monitor's pixels and the position is settled.
+fn move_and_resize(window: &WebviewWindow, pos: PhysicalPosition<i32>, size: PhysicalSize<u32>, target_scale: f64) {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::Graphics::Gdi::InvalidateRgn;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
+        };
+        let same_scale = window.scale_factor().is_ok_and(|s| (s - target_scale).abs() < 1e-6);
+        if let (true, Ok(h)) = (same_scale, window.hwnd()) {
+            let hwnd = HWND(h.0 as *mut std::ffi::c_void);
+            // The same flags tao uses for its own moves and resizes (never activates, never changes the z-order).
+            // The window is undecorated, so its outer size is its inner size (tao's set_size gives the same).
+            let flags = SWP_ASYNCWINDOWPOS | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE;
+            let (w, h) = (size.width as i32, size.height as i32);
+            if unsafe { SetWindowPos(hwnd, None, pos.x, pos.y, w, h, flags) }.is_ok() {
+                // Like tao after its own SetWindowPos: the whole client area is repainted.
+                let _ = unsafe { InvalidateRgn(hwnd, None, false) };
+                return;
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = target_scale;
+    let _ = window.set_position(pos);
+    let _ = window.set_size(size);
+    let _ = window.set_position(pos);
 }
 
 fn on_a_monitor(app: &AppHandle, p: &PhysicalPosition<i32>) -> bool {

@@ -117,6 +117,21 @@ test("the scroll area is its own layer (smooth scrolling with the blurred shadow
   assert.match(read("src/routes/+page.svelte"), /main \{[^}]*will-change: scroll-position/);
 });
 
+test("a chart's label row has a fixed height (hovering must not change the tile height and resize the window)", () => {
+  const body = read("src/lib/Spark.svelte").match(/\n  \.labels \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(body, /\n\s*height: [\d.]+(em|px);/, "the peak / hovered / mirrored readings differ by a fraction of a pixel");
+});
+
+test("the popup is moved and resized in one step (a move, then a resize, showed a frame in between)", () => {
+  const rs = read("src-tauri/src/lib.rs");
+  const fn = (name) => rs.match(new RegExp(`\\nfn ${name}\\([\\s\\S]*?\\n\\}\\n`))?.[0] ?? "";
+  assert.match(fn("move_and_resize"), /SetWindowPos\(hwnd, None, pos\.x, pos\.y, w, h, flags\)/);
+  assert.match(fn("place_popup"), /move_and_resize\(/);
+  assert.doesNotMatch(fn("place_popup"), /set_size\(/, "the fitted size goes out with the move");
+  assert.match(fn("resize_popup"), /move_and_resize\(/);
+  assert.doesNotMatch(fn("resize_popup"), /set_position\(/, "the new position goes out with the new size");
+});
+
 test("a long window's slots stay put as new samples arrive (the line must not shimmer every second)", async () => {
   const { slotSamples } = await lib("slots");
   const W = 1000;
