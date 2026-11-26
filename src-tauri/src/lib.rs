@@ -103,6 +103,9 @@ struct AppState {
     /// The next `set_popup_height` must resize the window even if the number is unchanged (the window was dragged
     /// to another size in between, so the remembered number no longer describes it).
     refit_height: AtomicBool,
+    /// The size of the user's own (pinned or dragged; logical) while the update screen hugs its content instead
+    /// (`fit_update_view`). It comes back when that screen is left or the popup is shown again.
+    update_view_saved: Mutex<Option<LogicalSize<f64>>>,
     /// When the user pressed an edge grip (ms since epoch; 0 = not resizing). Dragging an edge takes focus away
     /// from the popup for a moment, which must not count as "clicked elsewhere".
     resizing_since: AtomicU64,
@@ -462,8 +465,42 @@ fn spawn_ping_thread(app: AppHandle, state: Arc<AppState>) {
 /// Pinned popups are resized by the user; this restores a remembered size (clamped to the screen).
 #[tauri::command]
 fn resize_popup(window: WebviewWindow, state: AppStateRef<'_>, width: f64, height: f64) {
+    resize_popup_to(&window, &state, width, height);
+}
+
+/// The update screen is as tall as its content (`height`, logical). A popup without a size of the user's own simply
+/// fits it (`set_popup_height`). One with such a size (pinned or dragged) used to keep it: the short screen then sat
+/// at the top of a big, empty window. Now that size is put aside, the window takes the content's height (same
+/// width), and the size comes back when the screen is left (`leave_update_view`) or at the next show.
+#[tauri::command]
+fn fit_update_view(window: WebviewWindow, state: AppStateRef<'_>, height: u32) {
+    if !size_is_fixed(&state) {
+        set_popup_height(window, state, height);
+        return;
+    }
+    if is_resizing(&state) || !window.is_visible().unwrap_or(false) {
+        return;
+    }
+    let (Ok(now), Ok(scale)) = (window.outer_size(), window.scale_factor()) else { return };
+    let now: LogicalSize<f64> = now.to_logical(scale);
+    // Only the first fit puts the size aside: the later ones (the notes arrive, the progress line) see the update size.
+    let _ = state.update_view_saved.lock().unwrap().get_or_insert(now);
+    resize_popup_to(&window, &state, now.width, height.clamp(240, 1400) as f64);
+}
+
+/// The update screen was left: the size of the user's own that `fit_update_view` put aside comes back.
+#[tauri::command]
+fn leave_update_view(window: WebviewWindow, state: AppStateRef<'_>) {
+    // Copy the value out: holding the lock across window calls could deadlock against the main thread.
+    let saved = state.update_view_saved.lock().unwrap().take();
+    if let Some(s) = saved {
+        resize_popup_to(&window, &state, s.width, s.height);
+    }
+}
+
+fn resize_popup_to(window: &WebviewWindow, state: &AppState, width: f64, height: f64) {
     // Not while the user drags an edge: a size set by the page now would fight the drag.
-    if !size_is_fixed(&state) || is_resizing(&state) {
+    if !size_is_fixed(state) || is_resizing(state) {
         return;
     }
     let (mut w, mut h) = (width.max(240.0), height.max(320.0));
@@ -485,7 +522,7 @@ fn resize_popup(window: WebviewWindow, state: AppStateRef<'_>, width: f64, heigh
     let anchor = *state.anchor.lock().unwrap();
     if let (Some(auto), Some(anchor)) = (auto, anchor) {
         if (auto.x - pos.x).abs() <= 4 && (auto.y - pos.y).abs() <= 4 {
-            place_popup(&window, &state, anchor, PopupSize::Exactly(size));
+            place_popup(window, state, anchor, PopupSize::Exactly(size));
             return;
         }
     }
@@ -507,7 +544,7 @@ fn resize_popup(window: WebviewWindow, state: AppStateRef<'_>, width: f64, heigh
         tol,
         anchor_below,
     );
-    move_and_resize(&window, PhysicalPosition::new(want.0, want.1), new, mon.scale_factor());
+    move_and_resize(window, PhysicalPosition::new(want.0, want.1), new, mon.scale_factor());
 }
 
 /// Top-left corner for a window that changes from the `old` to the `new` size (all physical pixels, `area` =
@@ -949,6 +986,12 @@ fn show_popup(app: &AppHandle, anchor: Option<(f64, f64)>) {
     let Some(w) = app.get_webview_window("main") else { return };
     let state = app.state::<Arc<AppState>>();
     trim_webview(app, false);
+    // Hidden while the update screen hugged its content: every visit starts on the main view, so the size of the
+    // user's own comes back before the window is placed and shown (the page's `leave_update_view` then finds nothing).
+    let saved = state.update_view_saved.lock().unwrap().take();
+    if let Some(s) = saved {
+        let _ = w.set_size(s);
+    }
     let pinned = state.pinned.load(Ordering::Relaxed);
     // A pinned popup reappears exactly where the user left it (if that spot still exists).
     let remembered = if pinned { *state.pinned_pos.lock().unwrap() } else { None };
@@ -1716,6 +1759,8 @@ pub fn run() {
             set_ping_continuous,
             get_ping_state,
             resize_popup,
+            fit_update_view,
+            leave_update_view,
             set_auto_update,
             set_auto_check,
             get_notice,
@@ -1766,6 +1811,7 @@ pub fn run() {
                 pinned: AtomicBool::new(false),
                 custom_size: AtomicBool::new(false),
                 refit_height: AtomicBool::new(false),
+                update_view_saved: Mutex::new(None),
                 resizing_since: AtomicU64::new(0),
                 pinned_pos: Mutex::new(None),
                 auto_pos: Mutex::new(None),

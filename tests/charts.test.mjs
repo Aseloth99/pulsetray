@@ -128,8 +128,23 @@ test("the popup is moved and resized in one step (a move, then a resize, showed 
   assert.match(fn("move_and_resize"), /SetWindowPos\(hwnd, None, pos\.x, pos\.y, w, h, flags\)/);
   assert.match(fn("place_popup"), /move_and_resize\(/);
   assert.doesNotMatch(fn("place_popup"), /set_size\(/, "the fitted size goes out with the move");
-  assert.match(fn("resize_popup"), /move_and_resize\(/);
-  assert.doesNotMatch(fn("resize_popup"), /set_position\(/, "the new position goes out with the new size");
+  assert.match(fn("resize_popup_to"), /move_and_resize\(/);
+  assert.doesNotMatch(fn("resize_popup_to"), /set_position\(/, "the new position goes out with the new size");
+});
+
+test("the update screen hugs its content even in a popup with a size of the user's own, and gives that size back", () => {
+  const page = read("src/routes/+page.svelte");
+  const rs = read("src-tauri/src/lib.rs");
+  const fn = (name) => rs.match(new RegExp(`\\nfn ${name}\\([\\s\\S]*?\\n\\}\\n`))?.[0] ?? "";
+  // a pinned or dragged popup ignores set_popup_height: the short screen sat at the top of a big, empty window
+  assert.match(page.match(/function fitUpdate\(\) \{[\s\S]*?\n  \}/)?.[0] ?? "", /invoke\("fit_update_view"/);
+  assert.match(page, /if \(onUpdateView && !now\) invoke\("leave_update_view"\)/);
+  assert.match(page.match(/function saveUserSize\(\) \{[\s\S]*?\n  \}/)?.[0] ?? "", /if \(view === "update"\) return;/);
+  assert.match(fn("fit_update_view"), /if !size_is_fixed\(&state\) \{\s*set_popup_height\(/, "an auto-fitting popup fits as before");
+  assert.match(fn("fit_update_view"), /get_or_insert\(now\)/, "only the first fit puts the user's size aside");
+  assert.match(fn("leave_update_view"), /\.take\(\)/);
+  assert.match(fn("show_popup"), /update_view_saved\.lock\(\)\.unwrap\(\)\.take\(\)[\s\S]*?w\.set_size\(s\)/, "hidden on the update screen");
+  for (const name of ["fit_update_view", "leave_update_view"]) assert.match(rs, new RegExp(`\\n\\s+${name},\\n`), `${name} is registered`);
 });
 
 test("a long window's slots stay put as new samples arrive (the line must not shimmer every second)", async () => {

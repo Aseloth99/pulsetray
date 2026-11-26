@@ -431,7 +431,8 @@
   let updateState = $state<CheckState>("idle");
   let checkBusy = $state(false);
 
-  // The update screen is as tall as its content (the notes box scrolls inside it).
+  // The update screen is as tall as its content (the notes box scrolls inside it), also when the popup has a size of
+  // the user's own (pinned or dragged): Rust puts that size aside and brings it back when the screen is left.
   const UPDATE_MIN_H = 300;
   let updEl = $state<HTMLElement>();
   function fitUpdate() {
@@ -440,7 +441,7 @@
     if (!head || !main || !updEl) return;
     const cs = getComputedStyle(main);
     const need = head.offsetHeight + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + updEl.offsetHeight + 28;
-    invoke("set_popup_height", { height: Math.min(Math.max(Math.ceil(need), UPDATE_MIN_H), MAX_FIT_H, screen.availHeight - 16) });
+    invoke("fit_update_view", { height: Math.min(Math.max(Math.ceil(need), UPDATE_MIN_H), MAX_FIT_H, screen.availHeight - 16) });
   }
   $effect(() => {
     if (view !== "update" || !updEl) return;
@@ -448,6 +449,13 @@
     ro.observe(updEl);
     fitUpdate();
     return () => ro.disconnect();
+  });
+  // Leaving the update screen (back, Later, Esc): the size of the user's own comes back (nothing happens without one).
+  let onUpdateView = false;
+  $effect(() => {
+    const now = view === "update";
+    if (onUpdateView && !now) invoke("leave_update_view").catch(() => {});
+    onUpdateView = now;
   });
   /** Back from the update screen. Leaving while a download runs stops it (a download nobody sees must not end in a restart). */
   function leaveUpdate() {
@@ -577,6 +585,8 @@
   // A size the user dragged to is remembered, separately for classic and advanced (pinned or not).
   let sizeTimer: ReturnType<typeof setTimeout> | undefined;
   function saveUserSize() {
+    // The update screen's size is its own (it hugs its content); the size kept for the mode comes back after it.
+    if (view === "update") return;
     settings.sizes[adv ? "advanced" : "classic"] = { w: window.innerWidth, h: window.innerHeight };
     pinnedFitted = false;
     settings.save();
