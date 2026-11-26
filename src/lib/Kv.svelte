@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tip } from "./tipstate.svelte";
   let {
     label,
     value,
@@ -7,7 +8,7 @@
   }: { label: string; value: string; title?: string; wrap?: boolean } = $props();
 </script>
 
-<div class="kv-row" title={title ?? value}>
+<div class="kv-row" title={title ? undefined : value} use:tip={title ?? ""}>
   <span class="k">{label}</span>
   <span class="v" class:wrap>{value}</span>
 </div>

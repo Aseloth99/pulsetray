@@ -10,6 +10,7 @@
   import { store, primaryGpu, type Metrics, type Gpu } from "../metrics.svelte";
   import { settings } from "../settings.svelte";
   import { caps } from "../caps.svelte";
+  import { tip } from "../tipstate.svelte";
 
   let { m, adv, span }: { m: Metrics; adv: boolean; span: number } = $props();
   const GIB = 1024 ** 3;
@@ -88,7 +89,7 @@
     {#if m.gpus.length > 1}
       <div class="seg">
         {#each m.gpus as g, i (g.luid)}
-          <button class:on={g.luid === gpu.luid} title={g.name} onclick={() => (chosen = g.luid)}>
+          <button class:on={g.luid === gpu.luid} use:tip={g.name} onclick={() => (chosen = g.luid)}>
             {labels[i]}
           </button>
         {/each}
@@ -96,7 +97,7 @@
     {/if}
 
     {#if adv}
-      {#if show("model")}<p class="model" title={gpu.name}>{gpu.name}</p>{/if}
+      {#if show("model")}<p class="model" use:tip={gpu.name}>{gpu.name}</p>{/if}
       <div class="split">
         <div class="vis"><Donut value={gpu.usage} color="var(--gpu)" size={96} /></div>
         <div class="kv">
@@ -131,7 +132,7 @@
     {:else}
       <div class="center"><Donut value={gpu.usage} color="var(--gpu)" size={72} /></div>
       <Spark data={store.series[`gpu.${gpu.luid}.usage`] ?? []} times={store.times} color="var(--gpu)" max={100} fmt={percent} height={22} who="gpu" />
-      <p class="sub c" title={gpu.name}>{shortName(gpu.name)}</p>
+      <p class="sub c" use:tip={gpu.name}>{shortName(gpu.name)}</p>
       <div class="memrow">
         <div class="mh">
           <span class="sub">{mm.label}</span>

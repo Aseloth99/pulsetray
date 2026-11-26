@@ -20,6 +20,7 @@
   import { settings, type TileId } from "./settings.svelte";
   import { caps } from "./caps.svelte";
   import { tr } from "./tr";
+  import { tip } from "./tipstate.svelte";
 
   let {
     tile,
@@ -62,7 +63,7 @@
 {#if add}
   <OptionMenu pick={add} align="start">
     {#snippet trigger({ toggle, open })}
-      <button type="button" class="add" data-nocopy aria-haspopup="menu" aria-expanded={open} title={add.tip} onclick={toggle}>
+      <button type="button" class="add" data-nocopy aria-haspopup="menu" aria-expanded={open} use:tip={add.tip} onclick={toggle}>
         <Icon name="plus" size={10} />{tr("addChart")}
       </button>
     {/snippet}

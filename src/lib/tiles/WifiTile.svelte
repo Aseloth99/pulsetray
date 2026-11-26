@@ -5,6 +5,7 @@
   import { lower, tr } from "../tr";
   import type { Metrics } from "../metrics.svelte";
   import { settings } from "../settings.svelte";
+  import { tip } from "../tipstate.svelte";
 
   let { m, adv, span }: { m: Metrics; adv: boolean; span: number } = $props();
   const w = $derived(m.wifi);
@@ -40,7 +41,7 @@
         </div>
       {:else}
         <div class="center"><Donut value={w.signal} color="var(--cpu)" size={72} /></div>
-        <p class="sub c" title={w.ssid}>{w.ssid || tr("wifi")}</p>
+        <p class="sub c" use:tip={w.ssid}>{w.ssid || tr("wifi")}</p>
         <p class="sub c">{w.rxMbps} / {w.txMbps} Mbps</p>
       {/if}
     {:else if adv}

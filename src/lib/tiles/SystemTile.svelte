@@ -4,6 +4,7 @@
   import { tr, dur } from "../tr";
   import { store, type Metrics } from "../metrics.svelte";
   import { settings } from "../settings.svelte";
+  import { tip } from "../tipstate.svelte";
 
   let { m, adv, span }: { m: Metrics; adv: boolean; span: number } = $props();
   const hw = $derived(store.hw);
@@ -25,7 +26,7 @@
     <div class="stack c">
       <b class="big">{dur(m.uptimeSecs)}</b>
       <span class="sub">{tr("uptimeFull")}</span>
-      {#if hw?.os}<span class="sub os" title={hw.os}>{hw.os}</span>{/if}
+      {#if hw?.os}<span class="sub os" use:tip={hw.os}>{hw.os}</span>{/if}
       <span class="sub">{m.processCount} {tr("procCount")}</span>
     </div>
   {/if}

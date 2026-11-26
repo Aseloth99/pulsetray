@@ -13,6 +13,7 @@
   import { settings } from "../settings.svelte";
   import { caps } from "../caps.svelte";
   import { store, type Metrics, type DiskHealth } from "../metrics.svelte";
+  import { tip } from "../tipstate.svelte";
 
   let { m, adv, span }: { m: Metrics; adv: boolean; span: number } = $props();
   const label = (mount: string) => mount.replace(/[\\/]+$/, "") || mount;
@@ -155,9 +156,9 @@
   {#if tabsOn}
     {#if phys.length <= MAX_TABS}
       <div class="seg" role="group" aria-label={tr("pickDiskTip")}>
-        <button class:on={!sel} title={tr("allDisksTip")} onclick={() => choose(null)}>{tr("allDisks")}</button>
+        <button class:on={!sel} use:tip={tr("allDisksTip")} onclick={() => choose(null)}>{tr("allDisks")}</button>
         {#each phys as p (p.index)}
-          <button class:on={sel?.index === p.index} title={diskFull(p)} onclick={() => choose(p)}>
+          <button class:on={sel?.index === p.index} use:tip={diskFull(p)} onclick={() => choose(p)}>
             {diskTab(p)}
           </button>
         {/each}
@@ -165,7 +166,7 @@
     {:else}
       <OptionMenu pick={diskPick} align="start">
         {#snippet trigger({ toggle, open })}
-          <button type="button" class="drop" aria-haspopup="menu" aria-expanded={open} title={diskPick.tip} onclick={toggle}>
+          <button type="button" class="drop" aria-haspopup="menu" aria-expanded={open} use:tip={diskPick.tip} onclick={toggle}>
             <span>{sel ? diskFull(sel) : tr("allDisks")}</span><Icon name="down" size={10} />
           </button>
         {/snippet}
@@ -212,11 +213,11 @@
       <span class="sub">{tr("perDisk")}</span>
       {#each phys as p (p.index)}
         {#if tabsOn}
-          <button type="button" class="pd" title={`${diskFull(p)}\n${tr("diskOpenTip")}`} onclick={() => choose(p)}>
+          <button type="button" class="pd" use:tip={`${diskFull(p)}\n${tr("diskOpenTip")}`} onclick={() => choose(p)}>
             {@render pdRow(p)}
           </button>
         {:else}
-          <div class="pd" title={diskFull(p)}>{@render pdRow(p)}</div>
+          <div class="pd" use:tip={diskFull(p)}>{@render pdRow(p)}</div>
         {/if}
       {/each}
     {/if}
@@ -224,7 +225,7 @@
       <div class="divider"></div>
       <span class="sub">{tr("diskHealth")}</span>
       {#each shownHealth as h (h.index)}
-        <div class="health" title={details(h)}>
+        <div class="health" use:tip={details(h)}>
           <div class="hrow">
             <span class="hname">{modelOf(h)}</span>
             <span class="hval">
@@ -236,7 +237,7 @@
         </div>
       {/each}
       {#each unread as d (d.index)}
-        <div class="health" title={tr("healthUnreadTip")}>
+        <div class="health" use:tip={tr("healthUnreadTip")}>
           <div class="hrow">
             <span class="hname">{d.model || `${tr("drives")} ${d.index}`}</span>
             <span class="hval"><span class="hsum">{tr("healthUnread")}</span></span>

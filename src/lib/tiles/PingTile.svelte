@@ -220,7 +220,7 @@
   {#each showRows ? rows : [] as r (r.target)}
     <div class="blk">
       <div class="head">
-        <span class="name" title={r.ip ? `${r.target} (${r.ip})` : r.target}>{label(r.target)}</span>
+        <span class="name" use:tip={r.ip ? `${r.target} (${r.ip})` : r.target}>{label(r.target)}</span>
         <b style="color:{color(r.last)}">
           {#if r.last === undefined}—{:else if r.last === null}{tr("timeout")}{:else}{ms(r.last)}<small> ms</small>{/if}
         </b>

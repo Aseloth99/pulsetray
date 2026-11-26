@@ -17,6 +17,7 @@
   import { apps } from "../apps.svelte";
   import { caps } from "../caps.svelte";
   import { settings } from "../settings.svelte";
+  import { tip } from "../tipstate.svelte";
 
   type Sort = "cpu" | "mem" | "disk" | "gpu";
   let {
@@ -211,7 +212,7 @@
         oncontextmenu={(e) => openMenu(e, p)}
       >
         <!-- the classic tile is narrow: the "×24" counter (it would break "chrome" in two) is only in the tooltip -->
-        <span class="name" title={`${info?.path ?? p.name}${p.count > 1 ? ` (×${p.count})` : ""}${isVmHost(p.name) ? `\n${tr("vmHostTip")}` : ""}`}>
+        <span class="name" use:tip={`${info?.path ?? p.name}${p.count > 1 ? ` (×${p.count})` : ""}${isVmHost(p.name) ? `\n${tr("vmHostTip")}` : ""}`}>
           {#if !show("icons")}
             <!-- no icon -->
           {:else if info?.icon}

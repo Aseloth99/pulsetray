@@ -102,7 +102,7 @@
   badgePick={caps.quick("cpu", "badge")}
 >
   {#if adv}
-    {#if show("model")}<p class="model" title={name}>{name}</p>{/if}
+    {#if show("model")}<p class="model" use:tip={name}>{name}</p>{/if}
     <div class="split">
       <div class="vis" use:tip={tr("cpuUsageTip")}>
         <Donut value={m.cpuUsage} color="var(--cpu)" size={96} />
